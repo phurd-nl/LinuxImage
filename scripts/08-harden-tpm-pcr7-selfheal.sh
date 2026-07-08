@@ -134,15 +134,17 @@ clevis decrypt < "$JWE" >/dev/null 2>&1 && exit 0
 tok=$(cat)                     # expose_authtok feeds the password on stdin
 [ -n "$tok" ] || exit 0
 ( umask 077; printf '%s' "$tok" > "$OUT" )   # NO trailing newline (must match keyslot 0)
+# mtime used by open hook for a 60s TTL (stale stash is shredded, never reused)
 exit 0
 STASH
 sed -i "s/__USER__/$USERNAME/g" /usr/local/sbin/home-crypt-stash
 chmod 700 /usr/local/sbin/home-crypt-stash; chown root:root /usr/local/sbin/home-crypt-stash
 
 # ---- STEP 5: session open hook, now self-healing ---------------------------
-say "Updating session open hook /usr/local/sbin/home-crypt-open (self-heal aware)"
+say "Updating session open hook /usr/local/sbin/home-crypt-open (self-heal + fail-closed)"
 cat > /usr/local/sbin/home-crypt-open <<'OPEN'
 #!/bin/bash
+# Unlock encrypted /home. Exit 1 after purge_done if unlock fails (PAM required).
 set -e
 MNT="/home"
 DEV=__DEV__
@@ -150,21 +152,43 @@ MAP=__MAPPER__
 JWE=/etc/luks-keyfile.jwe
 PCR='{"pcr_bank":"sha256","pcr_ids":"7"}'
 STASH=/dev/shm/.home-crypt-authtok
+PURGE_DONE=/var/lib/linux-encryption-setup/purge_done
+STASH_TTL=60
 [ "$PAM_USER" = "__USER__" ] || exit 0
 K=$(mktemp -p /dev/shm); chmod 600 "$K"
 cleanup(){ shred -u "$K" "$STASH" 2>/dev/null || rm -f "$K" "$STASH"; }
 trap cleanup EXIT
 
-findmnt -M "$MNT" >/dev/null 2>&1 && exit 0   # already mounted (also clears any stash)
+if findmnt -M "$MNT" >/dev/null 2>&1; then
+  src=$(findmnt -n -o SOURCE --target "$MNT" 2>/dev/null || true)
+  [ "$src" = "/dev/mapper/$MAP" ] && exit 0
+fi
+
+fail_unlock() {
+  logger -t home-crypt "$1 — /home NOT unlocked for $PAM_USER"
+  if [ -f "$PURGE_DONE" ]; then
+    logger -t home-crypt "FAIL-CLOSED (purge done): denying session — recovery + sudo clevis-reheal"
+    exit 1
+  fi
+  exit 0
+}
+
+use_stash=0
+if [ -s "$STASH" ]; then
+  age=$(( $(date +%s) - $(stat -c %Y "$STASH" 2>/dev/null || echo 0) ))
+  if [ "$age" -ge 0 ] && [ "$age" -le "$STASH_TTL" ]; then
+    use_stash=1
+  else
+    logger -t home-crypt "self-heal: discarding stale stash (age ${age}s > ${STASH_TTL}s)"
+    shred -u "$STASH" 2>/dev/null || rm -f "$STASH"
+  fi
+fi
 
 if clevis decrypt < "$JWE" > "$K" 2>/dev/null; then
-  # Normal path: PCRs match, TPM released the key.
-  cryptsetup open --key-file "$K" "$DEV" "$MAP" 2>/dev/null || logger -t home-crypt "cryptsetup open failed"
+  cryptsetup open --key-file "$K" "$DEV" "$MAP" 2>/dev/null || fail_unlock "cryptsetup open failed"
 else
-  # DRIFT: TPM withheld the key (PCR 7 changed). Try hands-off self-heal using the
-  # login password the auth-stack hook stashed (it is keyslot 0).
   logger -t home-crypt "TPM withheld key (PCR drift) — attempting self-heal for $PAM_USER"
-  if [ -s "$STASH" ]; then
+  if [ "$use_stash" = 1 ]; then
     dd if=/dev/urandom bs=64 count=1 of="$K" status=none
     if cryptsetup luksAddKey --key-file "$STASH" "$DEV" "$K" 2>/dev/null; then
       if clevis encrypt tpm2 "$PCR" < "$K" > "$JWE.new" 2>/dev/null && clevis decrypt < "$JWE.new" | cmp -s - "$K"; then
@@ -173,12 +197,12 @@ else
       else
         rm -f "$JWE.new"; logger -t home-crypt "self-heal: reseal verify failed (JWE unchanged)"
       fi
-      cryptsetup open --key-file "$K" "$DEV" "$MAP" 2>/dev/null || logger -t home-crypt "self-heal: cryptsetup open failed"
+      cryptsetup open --key-file "$K" "$DEV" "$MAP" 2>/dev/null || fail_unlock "self-heal: cryptsetup open failed"
     else
-      logger -t home-crypt "self-heal: luksAddKey failed (login pw != keyslot 0?) — unlock /home manually then run: sudo clevis-reheal"
+      fail_unlock "self-heal: luksAddKey failed (login pw != keyslot 0?)"
     fi
   else
-    logger -t home-crypt "no stashed credential — /home NOT auto-unlocked. Unlock manually (recovery) then run: sudo clevis-reheal"
+    fail_unlock "no fresh stashed credential"
   fi
 fi
 shred -u "$K" 2>/dev/null || true
@@ -187,15 +211,20 @@ if [ -b "/dev/mapper/$MAP" ]; then
   if mount "/dev/mapper/$MAP" "$MNT" 2>/dev/null; then
     logger -t home-crypt "/home unlocked for $PAM_USER"
     [ -f "$MNT/swap.img" ] && swapon "$MNT/swap.img" 2>/dev/null && logger -t home-crypt "encrypted swap on"
-  else
-    logger -t home-crypt "mount failed for $PAM_USER"
+    exit 0
   fi
 fi
-exit 0
+fail_unlock "mount failed"
 OPEN
 sed -i -e "s/__USER__/$USERNAME/g" -e "s#__DEV__#$LUKS_DEV#g" -e "s/__MAPPER__/$MAPPER/g" \
   /usr/local/sbin/home-crypt-open
 chmod 700 /usr/local/sbin/home-crypt-open; chown root:root /usr/local/sbin/home-crypt-open
+
+# Keep close hook's stash shred in sync (idempotent rewrite of stash cleanup only if missing).
+if [ -f /usr/local/sbin/home-crypt-close ] && ! grep -q '\.home-crypt-authtok' /usr/local/sbin/home-crypt-close; then
+  sed -i '/swapoff/i shred -u /dev/shm/.home-crypt-authtok 2>/dev/null || rm -f /dev/shm/.home-crypt-authtok' \
+    /usr/local/sbin/home-crypt-close || true
+fi
 
 # ---- STEP 6: wire the stash hook into the PAM auth stack -------------------
 # Placed at the end of common-auth so it runs after pam_unix has validated the
@@ -208,10 +237,22 @@ else
   say "home-crypt-stash already wired into $PAMA"
 fi
 
-# session hooks should already be wired by 02/06; ensure the open hook is present.
+# session: open is required after purge, optional before (plaintext fallback still exists).
 PAMS=/etc/pam.d/common-session
-grep -q home-crypt-open  "$PAMS" || echo "session optional pam_exec.so quiet /usr/local/sbin/home-crypt-open"  >> "$PAMS"
+PURGE_DONE=/var/lib/linux-encryption-setup/purge_done
+OPEN_CTL=optional
+[ -f "$PURGE_DONE" ] && OPEN_CTL=required
+if grep -q home-crypt-open "$PAMS"; then
+  sed -i -E "s|^session[[:space:]]+(optional|required)[[:space:]]+pam_exec\.so[[:space:]]+quiet[[:space:]]+/usr/local/sbin/home-crypt-open|session ${OPEN_CTL} pam_exec.so quiet /usr/local/sbin/home-crypt-open|" "$PAMS"
+else
+  echo "session ${OPEN_CTL} pam_exec.so quiet /usr/local/sbin/home-crypt-open" >> "$PAMS"
+fi
+if ! grep -qE "^session[[:space:]]+${OPEN_CTL}[[:space:]]+pam_exec\.so.*home-crypt-open" "$PAMS"; then
+  sed -i '/home-crypt-open/d' "$PAMS"
+  echo "session ${OPEN_CTL} pam_exec.so quiet /usr/local/sbin/home-crypt-open" >> "$PAMS"
+fi
 grep -q home-crypt-close "$PAMS" || echo "session optional pam_exec.so quiet /usr/local/sbin/home-crypt-close" >> "$PAMS"
+say "PAM home-crypt-open control: $OPEN_CTL"
 
 # ---- Done ------------------------------------------------------------------
 say ""

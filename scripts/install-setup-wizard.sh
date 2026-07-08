@@ -40,9 +40,9 @@ fi
 chmod +x "$INSTALL_ROOT"/scripts/*.sh
 chmod +x "$INSTALL_ROOT"/webgui/server.py
 
-say "Creating state directory"
+say "Creating state directory (root-only; may hold recovery passphrase)"
 mkdir -p "$STATE_DIR"
-chmod 755 "$STATE_DIR"
+chmod 700 "$STATE_DIR"
 
 say "Installing systemd service (runs as root)"
 cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
@@ -77,12 +77,16 @@ say "Installing kiosk launcher (reopens until setup complete)"
 cat > /usr/local/bin/linux-encryption-wizard-kiosk <<KIOSK
 #!/bin/bash
 # Mandatory fullscreen LUKS setup box — relaunches if closed before completion.
+# Completion is decided ONLY by the root wizard API (or root state markers).
+# A user-writable ~/.cache dismiss file alone must NEVER skip encryption.
 set -euo pipefail
 
 URL="http://127.0.0.1:${PORT}"
+ROOT_DONE="/var/lib/linux-encryption-setup/completed_at"
 MARKER="\${HOME}/.cache/linux-encryption-wizard-dismissed"
 
-[ -f "\$MARKER" ] && exit 0
+# Root-owned completion marker (set by orchestrator or mark-wizard-complete.sh).
+[ -f "\$ROOT_DONE" ] && exit 0
 
 for i in \$(seq 1 45); do
   curl -sf "\$URL/api/health" >/dev/null 2>&1 && break
@@ -94,6 +98,8 @@ is_complete() {
 }
 
 is_complete && exit 0
+# Stale user dismiss file from a previous image must not block mandatory setup.
+rm -f "\$MARKER" 2>/dev/null || true
 
 if command -v chromium-browser >/dev/null 2>&1; then B=chromium-browser
 elif command -v chromium >/dev/null 2>&1; then B=chromium
@@ -147,6 +153,13 @@ EOF
 
 cat > /usr/local/bin/linux-encryption-wizard-dismiss <<'DISMISS'
 #!/bin/bash
+# Close the kiosk browser ONLY after root-owned setup completion.
+# (API /api/dismiss also enforces is_complete before calling this.)
+ROOT_DONE="/var/lib/linux-encryption-setup/completed_at"
+if [ ! -f "$ROOT_DONE" ]; then
+  echo "Encryption setup is not complete — cannot dismiss wizard." >&2
+  exit 1
+fi
 mkdir -p "$HOME/.cache"
 touch "$HOME/.cache/linux-encryption-wizard-dismissed"
 pidfile="$HOME/.cache/linux-encryption-wizard.pid"

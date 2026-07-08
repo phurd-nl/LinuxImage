@@ -1,0 +1,3 @@
+# GitHub Pages — static site (no Jekyll processing of HTML)
+title: LinuxImage
+description: Encrypted Ubuntu golden images — LUKS2 /home + TPM auto-unlock

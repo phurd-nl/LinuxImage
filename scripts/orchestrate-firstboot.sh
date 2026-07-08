@@ -14,15 +14,31 @@ RECOVERY_FILE="${WIZARD_RECOVERY_PW_FILE:-}"
 exec > >(tee -a "$LOG") 2>&1
 say(){ echo "[$(date +%T)] $*"; }
 
+# Always wipe credential files (tmpfs) on any exit — including the mid-setup
+# "pause for reboot" path that used to leave login/recovery on /dev/shm.
+shred_credentials() {
+  if [ -n "${LOGIN_FILE:-}" ] && [ -f "$LOGIN_FILE" ]; then
+    shred -u "$LOGIN_FILE" 2>/dev/null || rm -f "$LOGIN_FILE"
+  fi
+  if [ -n "${RECOVERY_FILE:-}" ] && [ -f "$RECOVERY_FILE" ]; then
+    shred -u "$RECOVERY_FILE" 2>/dev/null || rm -f "$RECOVERY_FILE"
+  fi
+  if [ -n "${LOGIN_FILE:-}" ]; then
+    rmdir "$(dirname "$LOGIN_FILE")" 2>/dev/null || true
+  fi
+}
+
 on_err() {
   write_progress "error" "Setup failed — see $LOG" 0
 }
 trap on_err ERR
+trap shred_credentials EXIT
 
 [ "$EUID" -eq 0 ] || { echo "ABORT: root required"; exit 1; }
 
 write_progress() { # phase message [pct]
   mkdir -p "$STATE_DIR"
+  chmod 700 "$STATE_DIR" 2>/dev/null || true
   python3 -c 'import json,sys; print(json.dumps({"phase":sys.argv[1],"message":sys.argv[2],"pct":int(sys.argv[3]),"ts":sys.argv[4]}))' \
     "$1" "$2" "${3:-0}" "$(date -Iseconds)" > "$PROGRESS"
 }
@@ -117,9 +133,4 @@ if [ "$PHASE" = "needs_purge" ]; then
   date -Iseconds > "$STATE_DIR/completed_at"
   say "━━━ FIRST-BOOT SETUP COMPLETE ━━━"
 fi
-
-# Shred password files
-[ -f "$LOGIN_FILE" ] && shred -u "$LOGIN_FILE" 2>/dev/null || rm -f "$LOGIN_FILE"
-[ -f "$RECOVERY_FILE" ] && shred -u "$RECOVERY_FILE" 2>/dev/null || rm -f "$RECOVERY_FILE"
-# Remove tmpfs parent if empty
-rmdir "$(dirname "$LOGIN_FILE")" 2>/dev/null || true
+# Credential shred runs via EXIT trap (covers reboot-pause and error exits too).

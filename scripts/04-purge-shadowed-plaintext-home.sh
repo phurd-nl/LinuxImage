@@ -100,5 +100,22 @@ if [ "$z" = "y" ] || [ "$z" = "Y" ]; then
 fi
 
 mkdir -p /var/lib/linux-encryption-setup
+chmod 700 /var/lib/linux-encryption-setup 2>/dev/null || true
 date -Iseconds > /var/lib/linux-encryption-setup/purge_done
+
+# Fail-closed login: plaintext fallback is gone. Upgrade PAM open from optional
+# → required so a failed TPM unseal cannot leave the user in an empty / wrong /home.
+PAMF=/etc/pam.d/common-session
+if [ -f "$PAMF" ]; then
+  if grep -q 'home-crypt-open' "$PAMF"; then
+    sed -i -E 's|^session[[:space:]]+optional[[:space:]]+pam_exec\.so[[:space:]]+quiet[[:space:]]+/usr/local/sbin/home-crypt-open|session required pam_exec.so quiet /usr/local/sbin/home-crypt-open|' "$PAMF"
+  fi
+  if ! grep -qE '^session[[:space:]]+required[[:space:]]+pam_exec\.so.*home-crypt-open' "$PAMF"; then
+    sed -i '/home-crypt-open/d' "$PAMF"
+    echo "session required pam_exec.so quiet /usr/local/sbin/home-crypt-open" >> "$PAMF"
+  fi
+  echo "PAM: home-crypt-open is now required (fail-closed after purge)."
+fi
+
 echo "Done. The only copy of your home data now lives on the encrypted volume."
+echo "If auto-unlock ever fails: recovery passphrase + live USB (see RUNBOOK), then: sudo clevis-reheal"

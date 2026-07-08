@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LinuxImage — Encrypted Ubuntu golden images</title>
+  <meta name="description" content="LinuxImage: LUKS2 /home encryption, TPM auto-unlock, and a mandatory first-boot wizard for Ubuntu laptops and fleet golden images.">
+  <meta name="theme-color" content="#0a0308">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231a0512'/%3E%3Cpath d='M10 14h12v10H10z' fill='none' stroke='%23E95420' stroke-width='2'/%3E%3Cpath d='M13 14V10a3 3 0 016 0v4' fill='none' stroke='%23E95420' stroke-width='2'/%3E%3C/svg%3E">
+</head>
+<body>
+  <div class="bg" aria-hidden="true"></div>
+
+  <header class="nav">
+    <a class="brand" href="#top">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.75">
+          <rect x="5" y="11" width="14" height="10" rx="2"/>
+          <path d="M8 11V7a4 4 0 1 1 8 0v4"/>
+        </svg>
+      </span>
+      <span class="brand-name">LinuxImage</span>
+    </a>
+    <nav class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#flow">How it works</a>
+      <a href="#security">Security</a>
+      <a href="#start">Quick start</a>
+      <a class="nav-cta" href="https://github.com/phurd-nl/LinuxImage">GitHub</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <p class="eyebrow">Ubuntu fleet encryption</p>
+      <h1>Golden images that encrypt <em>/home</em> on first boot</h1>
+      <p class="lede">
+        <strong>LinuxImage</strong> is LUKS2 + TPM auto-unlock tooling for Ubuntu laptops:
+        bake a wizard into the image, users enter their login password once,
+        and encryption, sealing, and cleanup run unattended.
+      </p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="https://github.com/phurd-nl/LinuxImage">View on GitHub</a>
+        <a class="btn btn-ghost" href="#start">Deploy guide</a>
+      </div>
+      <ul class="hero-pills" aria-label="Highlights">
+        <li>LUKS2 AES-XTS-512</li>
+        <li>TPM 2.0 · PCR 7</li>
+        <li>First-boot password box</li>
+        <li>Self-heal after SB drift</li>
+      </ul>
+    </section>
+
+    <section id="features" class="section">
+      <h2>What you get</h2>
+      <div class="grid">
+        <article class="card">
+          <h3>Encrypted home, not full-disk drama</h3>
+          <p>Only <code>/home</code> is LUKS2. Root stays simple for imaging; user data is encrypted at rest after logout.</p>
+        </article>
+        <article class="card">
+          <h3>TPM auto-unlock at login</h3>
+          <p>A random key is sealed with Clevis to the TPM. Login opens the volume; logout closes it. No plaintext keyfile on disk.</p>
+        </article>
+        <article class="card">
+          <h3>Mandatory first-boot wizard</h3>
+          <p>Fullscreen Ubuntu-styled password box. User types their login password; partition, encrypt, seal, harden, and purge run automatically.</p>
+        </article>
+        <article class="card">
+          <h3>Fleet / golden-image ready</h3>
+          <p>Leave ≥50&nbsp;GB free at the end of the boot disk. Autoinstall seed + late-install hook drop the wizard into every clone.</p>
+        </article>
+        <article class="card">
+          <h3>Firmware-update resilient</h3>
+          <p>After setup, the seal is PCR&nbsp;7 only (Secure Boot state). BIOS updates no longer brick auto-unlock; self-heal covers rare PCR drift.</p>
+        </article>
+        <article class="card">
+          <h3>Offline recovery floor</h3>
+          <p>Separate recovery passphrase (keyslot&nbsp;1). Wizard stores it root-only until admins collect it—or push to Ansible.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="flow" class="section">
+      <h2>How first boot works</h2>
+      <ol class="steps">
+        <li>
+          <span class="n">1</span>
+          <div>
+            <h3>Image boots with free space</h3>
+            <p>Wizard service listens on loopback. Kiosk relaunches until encryption is complete.</p>
+          </div>
+        </li>
+        <li>
+          <span class="n">2</span>
+          <div>
+            <h3>User enters Ubuntu login password</h3>
+            <p>Verified via PAM. Becomes LUKS keyslot&nbsp;0 (kept in sync on password change).</p>
+          </div>
+        </li>
+        <li>
+          <span class="n">3</span>
+          <div>
+            <h3>Partition · encrypt · migrate · seal</h3>
+            <p>Creates the home partition, LUKS2 format, rsync of <code>/home</code>, TPM-sealed key, PAM open/close hooks.</p>
+          </div>
+        </li>
+        <li>
+          <span class="n">4</span>
+          <div>
+            <h3>Reboot · verify · harden · purge</h3>
+            <p>Confirms auto-unlock, re-seals to PCR&nbsp;7 + self-heal, then irreversibly wipes the plaintext shadow on root.</p>
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <section id="security" class="section">
+      <h2>Security model</h2>
+      <div class="split">
+        <div class="card danger-tone">
+          <h3>Destructive by design</h3>
+          <p>These scripts reformat a partition and later wipe plaintext <code>/home</code>. Never run them on a machine that isn’t the intended target. Read <code>RUNBOOK.md</code> first.</p>
+        </div>
+        <div class="card">
+          <h3>Guards built in</h3>
+          <ul class="checklist">
+            <li>Refuse to format devices that already have a signature</li>
+            <li>Purge only if live <code>/home</code> is the encrypted mapper</li>
+            <li>Fail-closed after purge (PAM <code>required</code> if unlock fails)</li>
+            <li>Credentials only on tmpfs; shredded on every orchestrator exit</li>
+            <li>Wizard API: loopback-only, origin check, rate-limited starts</li>
+            <li>No skip via user cache file until root marks complete</li>
+          </ul>
+        </div>
+      </div>
+      <div class="keyslots">
+        <h3>Keyslots</h3>
+        <table>
+          <thead>
+            <tr><th>Slot</th><th>Secret</th><th>Purpose</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>0</td><td>Login password</td><td>User-facing unlock; PAM password sync</td></tr>
+            <tr><td>1</td><td>Recovery passphrase</td><td>Offline floor (print / password manager)</td></tr>
+            <tr><td>2+</td><td>TPM-sealed random key</td><td>Auto-unlock via <code>/etc/luks-keyfile.jwe</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="start" class="section">
+      <h2>Quick start</h2>
+      <p class="section-intro">Safe to <strong>build</strong> on a dev machine. Only <strong>deploy / encrypt</strong> on a target VM or laptop.</p>
+      <pre class="code"><code># Clone
+git clone https://github.com/phurd-nl/LinuxImage.git
+cd LinuxImage
+
+# Validate + tarball (safe on dev)
+bash scripts/build.sh
+
+# On a target / golden-image VM (root)
+sudo bash scripts/deploy.sh
+# or full image prep:
+sudo bash scripts/prepare-ubuntu-image.sh
+
+# Capture the image with ≥50 GB unallocated at end of boot disk.
+# First boot: user enters login password in the LUKS box — rest is automatic.</code></pre>
+      <div class="card warn-tone">
+        <h3>Before you touch disks</h3>
+        <ol>
+          <li>Edit <code>scripts/config.sh</code> (<code>DISK</code>, <code>PARTNUM</code>, <code>USERNAME</code>, <code>MAPPER</code>).</li>
+          <li>Run <code>bash scripts/test-config.sh</code>.</li>
+          <li>Enable <strong>Secure Boot</strong> (PCR&nbsp;7 depends on it).</li>
+          <li>Follow numbered scripts in order — or let the wizard orchestrate them.</li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="section cta-band">
+      <h2>Ship laptops that encrypt themselves</h2>
+      <p>Source, runbook, and imaging seeds live in the repository.</p>
+      <a class="btn btn-primary" href="https://github.com/phurd-nl/LinuxImage">Open LinuxImage on GitHub</a>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p><strong>LinuxImage</strong> — LUKS2 /home + TPM for Ubuntu golden images.</p>
+    <p class="muted">Destructive disk tooling. Backup first. Verify unlock before purge.</p>
+    <p class="muted"><a href="https://github.com/phurd-nl/LinuxImage">github.com/phurd-nl/LinuxImage</a></p>
+  </footer>
+</body>
+</html>

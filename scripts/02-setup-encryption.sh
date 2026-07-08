@@ -87,7 +87,7 @@ else
   cryptsetup luksAddKey "$LUKS_DEV"
 fi
 
-# ---- TPM-sealed keyfile (keyslot 1) ---------------------------------------
+# ---- TPM-sealed keyfile (keyslot 2; 0=login, 1=recovery) -------------------
 # The plaintext key NEVER touches disk: it lives in tmpfs, is added to LUKS,
 # sealed to the TPM as a JWE blob, then shredded. Only the JWE is stored.
 say "Generating key, adding as keyslot, sealing to TPM PCRs 0,2,4,7"
@@ -112,35 +112,59 @@ shred -u "$KEY"
 say "Installing login-time open/close hooks"
 cat > /usr/local/sbin/home-crypt-open <<'OPEN'
 #!/bin/bash
+# Unlock encrypted /home at login. Exit codes matter for PAM:
+#   0 = OK (mounted, or pre-purge soft-fail so login still works)
+#   1 = fail-closed after purge (no plaintext fallback must remain usable)
 set -e
 MNT="/home"
+MAP=__MAPPER__
+PURGE_DONE=/var/lib/linux-encryption-setup/purge_done
+STASH=/dev/shm/.home-crypt-authtok
 [ "$PAM_USER" = "__USER__" ] || exit 0
-findmnt -M "$MNT" >/dev/null 2>&1 && exit 0   # already mounted
 K=$(mktemp -p /dev/shm); chmod 600 "$K"
-if ! clevis decrypt < /etc/luks-keyfile.jwe > "$K" 2>/dev/null; then
-  logger -t home-crypt "TPM withheld key (PCR mismatch?) — /home NOT unlocked for $PAM_USER"
-  shred -u "$K"; exit 0
+cleanup(){ shred -u "$K" "$STASH" 2>/dev/null || rm -f "$K" "$STASH"; }
+trap cleanup EXIT
+
+# Already the encrypted volume? Nothing to do.
+if findmnt -M "$MNT" >/dev/null 2>&1; then
+  src=$(findmnt -n -o SOURCE --target "$MNT" 2>/dev/null || true)
+  [ "$src" = "/dev/mapper/$MAP" ] && exit 0
 fi
-cryptsetup open --key-file "$K" __DEV__ __MAPPER__ 2>/dev/null || \
-  logger -t home-crypt "cryptsetup open failed"
-shred -u "$K"
-if mount /dev/mapper/__MAPPER__ "$MNT" 2>/dev/null; then
+
+fail_unlock() {
+  local why="$1"
+  logger -t home-crypt "$why — /home NOT unlocked for $PAM_USER"
+  if [ -f "$PURGE_DONE" ]; then
+    logger -t home-crypt "FAIL-CLOSED (purge done): denying session — use recovery + clevis-reheal"
+    exit 1
+  fi
+  exit 0
+}
+
+if ! clevis decrypt < /etc/luks-keyfile.jwe > "$K" 2>/dev/null; then
+  fail_unlock "TPM withheld key (PCR mismatch?)"
+fi
+cryptsetup open --key-file "$K" __DEV__ "$MAP" 2>/dev/null || fail_unlock "cryptsetup open failed"
+shred -u "$K" 2>/dev/null || true
+if mount "/dev/mapper/$MAP" "$MNT" 2>/dev/null; then
   logger -t home-crypt "/home unlocked for $PAM_USER"
   [ -f "$MNT/swap.img" ] && swapon "$MNT/swap.img" 2>/dev/null && \
     logger -t home-crypt "encrypted swap on"
-else
-  logger -t home-crypt "mount failed for $PAM_USER"
+  exit 0
 fi
-exit 0
+fail_unlock "mount failed"
 OPEN
 cat > /usr/local/sbin/home-crypt-close <<'CLOSE'
 #!/bin/bash
 MNT="/home"
+STASH=/dev/shm/.home-crypt-authtok
 [ "$PAM_USER" = "__USER__" ] || exit 0
 # only act when no login sessions for the user remain (reliable for GDM/Wayland)
 if loginctl list-sessions --no-legend 2>/dev/null | awk '{print $3}' | grep -qx "__USER__"; then
   exit 0
 fi
+# Drop any leftover self-heal stash (should already be gone; belt-and-braces).
+shred -u "$STASH" 2>/dev/null || rm -f "$STASH"
 swapoff "$MNT/swap.img" 2>/dev/null || true
 umount "$MNT" 2>/dev/null || true
 cryptsetup close __MAPPER__ 2>/dev/null || true
@@ -153,6 +177,8 @@ chmod 700 /usr/local/sbin/home-crypt-open /usr/local/sbin/home-crypt-close
 chown root:root /usr/local/sbin/home-crypt-*
 
 # Wire into GDM PAM session (open early, close late).
+# optional until purge: unlock failure must not brick login while plaintext remains.
+# 04 upgrades open to required once purge_done is written.
 PAMF=/etc/pam.d/common-session
 grep -q home-crypt-open "$PAMF" || \
   echo "session optional pam_exec.so quiet /usr/local/sbin/home-crypt-open"  >> "$PAMF"
@@ -185,6 +211,8 @@ chmod +x /etc/kernel/postinst.d/zz-clevis-reseal
 # ---- Password-sync hook (keeps keyslot 0 == login password) ---------------
 cat > /usr/local/sbin/sync-luks-passwd <<'SYNC'
 #!/bin/bash
+# Only the encrypted-home owner may change keyslot 0.
+[ "$PAM_USER" = "__USER__" ] || exit 0
 [ -z "$PAM_AUTHTOK" ] && exit 0
 [ -z "$PAM_OLDAUTHTOK" ] && exit 0
 printf '%s\n%s\n' "$PAM_OLDAUTHTOK" "$PAM_AUTHTOK" | \
@@ -192,7 +220,7 @@ printf '%s\n%s\n' "$PAM_OLDAUTHTOK" "$PAM_AUTHTOK" | \
   && logger -t luks-sync "keyslot 0 synced for $PAM_USER" \
   || logger -t luks-sync "WARN sync failed for $PAM_USER"
 SYNC
-sed -i "s#__DEV__#$LUKS_DEV#g" /usr/local/sbin/sync-luks-passwd
+sed -i -e "s#__DEV__#$LUKS_DEV#g" -e "s/__USER__/$USERNAME/g" /usr/local/sbin/sync-luks-passwd
 chmod 700 /usr/local/sbin/sync-luks-passwd; chown root:root /usr/local/sbin/sync-luks-passwd
 grep -q sync-luks-passwd /etc/pam.d/common-password || \
   echo "password optional pam_exec.so expose_authtok /usr/local/sbin/sync-luks-passwd" >> /etc/pam.d/common-password

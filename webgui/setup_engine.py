@@ -83,6 +83,29 @@ def verify_login_password(username: str, password: str) -> bool:
     return proc.returncode == 0
 
 
+def _store_recovery_passphrase(hostname: str, phrase: str) -> Path:
+    """Persist recovery passphrase root-only. Without this (or Ansible), the
+    offline floor is lost after tmpfs shred and the machine can be locked out."""
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(STATE_DIR, 0o700)
+    except OSError:
+        pass
+    path = STATE_DIR / "recovery-passphrase"
+    # Atomic write: temp in same dir then rename; mode 0400 root:root.
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(
+        f"# LUKS recovery passphrase for {hostname}\n"
+        f"# Store offline, then: shred -u {path}\n"
+        f"{phrase}\n",
+        encoding="utf-8",
+    )
+    os.chmod(tmp, 0o400)
+    tmp.replace(path)
+    os.chmod(path, 0o400)
+    return path
+
+
 def fetch_recovery_passphrase(hostname: str) -> str:
     if ANSIBLE_API_URL:
         url = f"{ANSIBLE_API_URL}/api/v1/machines/{hostname}/luks-recovery-passphrase"
@@ -93,8 +116,10 @@ def fetch_recovery_passphrase(hostname: str) -> str:
         phrase = data.get("passphrase")
         if not phrase:
             raise RuntimeError("Ansible API returned no passphrase")
+        # Still mirror locally so offline recovery works if Ansible is unreachable later.
+        _store_recovery_passphrase(hostname, phrase)
         return phrase
-    # No Ansible yet: generate server-side; register if push URL configured.
+    # No Ansible: generate cryptographically strong phrase and keep a root-only copy.
     phrase = secrets.token_urlsafe(48)
     push_url = os.environ.get("ANSIBLE_PUSH_URL", "").rstrip("/")
     if push_url:
@@ -110,6 +135,9 @@ def fetch_recovery_passphrase(hostname: str) -> str:
                 pass
         except urllib.error.URLError as exc:
             raise RuntimeError(f"Failed to register recovery passphrase with Ansible: {exc.reason}") from exc
+    path = _store_recovery_passphrase(hostname, phrase)
+    # Never log the phrase; path only (for admin collection / fleet imaging).
+    print(f"recovery passphrase stored root-only at {path}", flush=True)
     return phrase
 
 
@@ -259,6 +287,7 @@ def get_status() -> dict[str, Any]:
             "blockers": [str(exc)],
             "hostname": _run(["hostname"]).stdout.strip(),
         }
+    recovery_path = STATE_DIR / "recovery-passphrase"
     return {
         "complete": is_complete(),
         "running": is_running(),
@@ -266,6 +295,9 @@ def get_status() -> dict[str, Any]:
         "hardware": hw,
         "log_tail": tail_log(30),
         "needs_root": os.geteuid() != 0,
+        # Path only — never the secret. Admin must collect offline then shred.
+        "recovery_stored": recovery_path.is_file(),
+        "recovery_path": str(recovery_path) if recovery_path.is_file() else None,
     }
 
 

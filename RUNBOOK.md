@@ -33,8 +33,8 @@ names and the broken keyfile mechanism in `linux-encryption-proposal-1.html`.
    plaintext to tmpfs (`/run`) at boot only if PCRs 0,2,4,7 match.
 4. **Unlock mechanism.** `pam_mount` has no `keyfile=` option. We use a small
    PAM session hook that opens the LUKS volume with the TPM-released keyfile at
-   login and closes + wipes it at logout. Recovery passphrase (keyslot 2) is the
-   offline fallback.
+   login and closes + wipes it at logout. Recovery passphrase (**keyslot 1**) is
+   the offline fallback; keyslot 0 = login password; keyslot 2 = TPM-sealed key.
 5. **Secure Boot first.** PCR 7 = Secure Boot state. We enable SB and enroll
    keys BEFORE sealing, so the seal is stable (avoids an immediate re-seal).
 6. **Package list.** Dropped the brittle version-pinned `libtss2-*-0t64`
@@ -71,22 +71,59 @@ names and the broken keyfile mechanism in `linux-encryption-proposal-1.html`.
       — ONLY after steps 4–5 pass. Irreversible. (Replaces the removed
       `03-finalize-wipe-old-home.sh`, which assumed the wrong mountpoint.)
 
-## TODO (optional hardening — not blocking; core setup complete 2026-06-24)
+## Fail-closed behaviour (post-purge)
 
-- [ ] **Test the kernel-update reseal path.** Dry-run `sudo /usr/local/sbin/clevis-reseal`
-      and confirm the new JWE still unseals, so it isn't found stale at the next
-      `apt upgrade`/kernel bump (PCRs 0,2,4,7 change).
-- [ ] **Verify the recovery passphrase (keyslot 1) offline.** Confirm it unlocks
-      via `cryptsetup open --test-passphrase`, and store the phrase off-machine.
-      This is the only fallback if TPM unseal ever fails.
-- [ ] **Document live-USB recovery** here in the runbook: how to unlock the
-      volume from a live USB if the login `pam_exec` hook breaks (it is
-      `session optional`, so on failure it silently drops to plaintext `/home`).
+| Stage | PAM open | Unlock fails → |
+|-------|----------|----------------|
+| After `02`, before `04` | `session optional` | Login still works; `/home` may be the **plaintext** shadow on root. Verify auto-unlock before purge. |
+| After `04` (`purge_done`) | `session required` | Login **denied**. No plaintext fallback. Recover offline (below), then `sudo clevis-reheal`. |
+
+Self-heal (script `08`, also run at end of `06`): on PCR-7 drift, auth stashes the login password in root-only tmpfs for ≤60s; session open reseals and shreds. Stash is never reused if stale.
+
+## TODO (optional ops checks)
+
+- [ ] **Test reseal:** `sudo /usr/local/sbin/clevis-reseal` then confirm unseal still works.
+- [ ] **Collect recovery passphrase offline** (wizard: `/var/lib/linux-encryption-setup/recovery-passphrase`) then `shred -u` that file.
+- [ ] **Tamper test:** change Secure Boot state / boot unsigned and confirm TPM withholds the key.
 
 ## Recovery (keep offline, printed)
 
-- Recovery passphrase (keyslot 2) — the only way in if the TPM is cleared,
-  the board is swapped, or UEFI firmware is updated (PCR 0 changes).
-- Re-seal after a firmware/UEFI change:
-  `sudo clevis-reseal` (helper installed by script 02) or manually re-run the
-  `clevis encrypt tpm2 ... pcr_ids:0,2,4,7` step.
+- Recovery passphrase (**keyslot 1**) — offline floor if TPM cleared, board swapped, or PCR 7 drifts and self-heal cannot run.
+  Login password = **keyslot 0**; TPM random key = **keyslot 2+**.
+- After first-boot wizard: `sudo cat /var/lib/linux-encryption-setup/recovery-passphrase`
+  → store offline → `sudo shred -u /var/lib/linux-encryption-setup/recovery-passphrase`.
+- Re-seal after a Secure Boot policy change (if self-heal did not fire):
+  `sudo clevis-reseal` or `sudo clevis-reheal` (PCR 7 only).
+
+### Live-USB / recovery-mode unlock
+
+Use when GDM login fails after purge (fail-closed) or hooks are broken.
+
+1. Boot Ubuntu **live USB** (or recovery root shell). Do **not** rely on the installed system's PAM hooks.
+2. Install tools if needed: `sudo apt-get update && sudo apt-get install -y cryptsetup`.
+3. Identify the LUKS partition (`lsblk -f` — look for `crypto_LUKS`, often `nvme0n1p3` or `p4` per `config.sh`).
+4. Unlock with recovery passphrase (or login password = keyslot 0):
+
+```bash
+sudo cryptsetup open /dev/nvme0n1pX home_crypt   # type recovery passphrase
+sudo mkdir -p /mnt/home
+sudo mount /dev/mapper/home_crypt /mnt/home
+# your data is under /mnt/home/<user>
+```
+
+5. If the installed root is still accessible, chroot and reheal TPM auto-unlock:
+
+```bash
+# mount installed root + EFI/boot as needed, then:
+sudo cryptsetup open /dev/nvme0n1pX home_crypt
+sudo mount /dev/mapper/home_crypt /mnt/install/home   # if repairing in place
+# From a root shell ON the installed system (after unlock + mount /home):
+sudo clevis-reheal    # prompts for login or recovery passphrase; reseals JWE to PCR 7
+```
+
+6. Confirm: reboot, log in, `findmnt /home` → `/dev/mapper/home_crypt`, `journalctl -t home-crypt -b`.
+7. Optional: `sudo bash /opt/linux-encryption-setup/scripts/07-cleanup-stray-slots.sh` to prune orphaned TPM keyslots after multiple heals.
+
+### If you only have the login password (keyslot 0)
+
+Same as step 4 — `cryptsetup open` accepts any valid passphrase. Then `sudo clevis-reheal` to restore TPM auto-unlock.

@@ -60,6 +60,11 @@
       <!-- Complete -->
       <div id="panel-done" class="panel hidden">
         <p class="success">Your home folder is encrypted. You're all set.</p>
+        <p class="hint" id="recovery-hint" hidden>
+          Admin: collect the offline recovery passphrase from
+          <code>/var/lib/linux-encryption-setup/recovery-passphrase</code>
+          (root only), store it offline, then shred that file.
+        </p>
         <button type="button" class="btn btn-primary" id="btn-close">Continue to desktop</button>
       </div>
 

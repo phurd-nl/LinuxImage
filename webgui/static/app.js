@@ -88,6 +88,11 @@
     if (status.complete) {
       unlocked = true;
       showPanel("done");
+      const rh = $("recovery-hint");
+      if (rh) {
+        if (status.recovery_stored) rh.hidden = false;
+        else rh.hidden = true;
+      }
       stopPoll();
       return;
     }

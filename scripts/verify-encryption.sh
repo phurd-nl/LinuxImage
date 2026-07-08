@@ -60,15 +60,22 @@ else
   no "$JWE missing — login hook cannot unseal the key"
 fi
 # Does the TPM actually release the key against the CURRENT PCR state?
-if [ -f "$JWE" ] && KEY=$(clevis decrypt < "$JWE" 2>/dev/null); then
-  ok "TPM unseals the keyfile against current PCRs (sealed to PCR 7 after 08)"
-  # Does that unsealed key actually unlock a LUKS slot? (non-destructive)
-  if printf '%s' "$KEY" | cryptsetup luksOpen --test-passphrase --key-file - "$LUKS_DEV" 2>/dev/null; then
-    ok "unsealed key unlocks the LUKS volume (test-passphrase)"
+# Use a tmpfs file — never a bash variable (binary keys can contain NUL bytes
+# that shell assignments silently truncate).
+if [ -f "$JWE" ]; then
+  _vk=$(mktemp -p /dev/shm); chmod 600 "$_vk"
+  if clevis decrypt < "$JWE" > "$_vk" 2>/dev/null && [ -s "$_vk" ]; then
+    ok "TPM unseals the keyfile against current PCRs (sealed to PCR 7 after 08)"
+    if cryptsetup luksOpen --test-passphrase --key-file "$_vk" "$LUKS_DEV" 2>/dev/null; then
+      ok "unsealed key unlocks the LUKS volume (test-passphrase)"
+    else
+      no "unsealed key does NOT unlock the volume — JWE/keyslot mismatch"
+    fi
   else
-    no "unsealed key does NOT unlock the volume — JWE/keyslot mismatch"
+    no "TPM did NOT release the key (PCR mismatch?) — would fall back to password at login"
   fi
-  unset KEY
+  shred -u "$_vk" 2>/dev/null || rm -f "$_vk"
+  unset _vk
 else
   no "TPM did NOT release the key (PCR mismatch?) — would fall back to password at login"
 fi
@@ -82,9 +89,36 @@ for f in /usr/local/sbin/home-crypt-open /usr/local/sbin/home-crypt-close \
 done
 grep -q home-crypt-open  /etc/pam.d/common-session  && ok "open hook wired into common-session"  || no "open hook NOT in common-session"
 grep -q home-crypt-close /etc/pam.d/common-session  && ok "close hook wired into common-session" || no "close hook NOT in common-session"
+if [ -f /var/lib/linux-encryption-setup/purge_done ]; then
+  if grep -qE '^session[[:space:]]+required[[:space:]]+pam_exec\.so.*home-crypt-open' /etc/pam.d/common-session; then
+    ok "open hook is PAM required (fail-closed after purge)"
+  else
+    no "purge_done set but home-crypt-open is NOT 'session required' — plaintext fallback gone, fix PAM"
+  fi
+  if grep -q FAIL-CLOSED /usr/local/sbin/home-crypt-open 2>/dev/null; then
+    ok "home-crypt-open has fail-closed logic"
+  else
+    wn "home-crypt-open may be an old build without fail-closed — re-run 08"
+  fi
+else
+  if grep -qE '^session[[:space:]]+optional[[:space:]]+pam_exec\.so.*home-crypt-open' /etc/pam.d/common-session; then
+    ok "open hook is PAM optional (pre-purge soft-fail is correct)"
+  else
+    wn "pre-purge: open hook not optional (login may hard-fail if TPM withholds key)"
+  fi
+fi
 grep -q sync-luks-passwd /etc/pam.d/common-password && ok "password-sync hook wired in"          || wn "password-sync hook not in common-password"
 grep -q home-crypt-stash /etc/pam.d/common-auth     && ok "self-heal stash hook wired into common-auth" || wn "self-heal stash hook not in common-auth (run 08)"
 [ -x /etc/kernel/postinst.d/zz-clevis-reseal ] && ok "kernel reseal hook installed" || wn "kernel reseal hook missing"
+rec=/var/lib/linux-encryption-setup/recovery-passphrase
+if [ -f "$rec" ]; then
+  mode=$(stat -c '%a' "$rec" 2>/dev/null || echo '?')
+  if [ "$mode" = "400" ] || [ "$mode" = "0400" ]; then
+    wn "recovery passphrase still on disk at $rec (mode $mode) — collect offline then: shred -u $rec"
+  else
+    no "recovery passphrase at $rec has mode $mode (want 400)"
+  fi
+fi
 
 # ---------------------------------------------------------------------------
 hd "5. This boot's unlock evidence (journal)"
