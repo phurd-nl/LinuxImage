@@ -1,0 +1,293 @@
+:root {
+  --ubuntu-orange: #E95420;
+  --ubuntu-orange-glow: rgba(233, 84, 32, 0.45);
+  --ubuntu-aubergine: #1a0512;
+  --ubuntu-light-aubergine: #9b4d96;
+  --bg-deep: #0a0308;
+  --dialog-bg: rgba(28, 10, 24, 0.72);
+  --dialog-border: rgba(255, 255, 255, 0.1);
+  --text: #f8f4f6;
+  --muted: rgba(255, 255, 255, 0.58);
+  --input-bg: rgba(0, 0, 0, 0.42);
+  --error: #ff7b7b;
+  --success: #5ee89a;
+  --radius: 16px;
+  --font: 'Ubuntu', 'Segoe UI', system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font);
+  background: var(--bg-deep);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background:
+    radial-gradient(ellipse 120% 80% at 20% 10%, rgba(155, 77, 150, 0.28) 0%, transparent 50%),
+    radial-gradient(ellipse 90% 60% at 85% 90%, rgba(233, 84, 32, 0.18) 0%, transparent 45%),
+    radial-gradient(ellipse 60% 40% at 50% 50%, rgba(60, 20, 50, 0.4) 0%, transparent 70%),
+    linear-gradient(165deg, #0a0308 0%, #1a0512 35%, #12040e 70%, #0a0308 100%);
+}
+
+.overlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at center, black 20%, transparent 75%);
+  pointer-events: none;
+}
+
+.dialog {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  background: var(--dialog-bg);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  border: 1px solid var(--dialog-border);
+  border-radius: var(--radius);
+  padding: 2.25rem 2rem 1.6rem;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.04) inset,
+    0 32px 64px rgba(0,0,0,0.55),
+    0 0 80px rgba(233, 84, 32, 0.08);
+  text-align: center;
+  animation: dialog-in 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.dialog-icon {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: linear-gradient(145deg, rgba(233,84,32,0.2), rgba(155,77,150,0.15));
+  border: 1px solid rgba(233,84,32,0.25);
+  box-shadow: 0 0 32px var(--ubuntu-orange-glow);
+  color: var(--ubuntu-orange);
+}
+
+.dialog-icon svg {
+  filter: drop-shadow(0 0 8px var(--ubuntu-orange-glow));
+}
+
+.dialog h1 {
+  font-size: 1.45rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.4rem;
+  background: linear-gradient(180deg, #fff 0%, rgba(255,255,255,0.85) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.subtitle {
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 300;
+  margin-bottom: 1.6rem;
+  line-height: 1.5;
+}
+
+.panel { text-align: left; }
+.panel.hidden { display: none; }
+
+.field-label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.45rem;
+}
+
+.field-input {
+  width: 100%;
+  background: var(--input-bg);
+  border: 1px solid var(--dialog-border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 1.05rem;
+  padding: 0.85rem 1rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+}
+
+.field-input::placeholder { color: rgba(255,255,255,0.28); }
+
+.field-input:focus {
+  border-color: rgba(233,84,32,0.6);
+  background: rgba(0,0,0,0.5);
+  box-shadow: 0 0 0 3px rgba(233,84,32,0.18), 0 0 24px rgba(233,84,32,0.12);
+}
+
+.hint {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin: 0.65rem 0 1.35rem;
+  line-height: 1.45;
+  font-weight: 300;
+}
+
+.hint code {
+  background: rgba(233,84,32,0.12);
+  color: rgba(255,200,170,0.9);
+  padding: 0.12em 0.4em;
+  border-radius: 4px;
+  font-size: 0.9em;
+  border: 1px solid rgba(233,84,32,0.15);
+}
+
+.error {
+  color: var(--error);
+  font-size: 0.84rem;
+  margin-bottom: 0.85rem;
+  padding: 0.5rem 0.65rem;
+  background: rgba(255,80,80,0.08);
+  border-radius: 8px;
+  border: 1px solid rgba(255,80,80,0.15);
+}
+.error.hidden { display: none; }
+
+.btn {
+  display: block;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--dialog-border);
+  background: rgba(255,255,255,0.06);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+}
+
+.btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.1);
+  transform: translateY(-1px);
+}
+
+.btn:active:not(:disabled) { transform: translateY(0); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-primary {
+  background: linear-gradient(180deg, #f06a38 0%, var(--ubuntu-orange) 45%, #c4411a 100%);
+  border-color: rgba(255,120,60,0.4);
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(233,84,32,0.35), 0 0 0 1px rgba(255,255,255,0.08) inset;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #f57848 0%, #e95420 45%, #d14a1c 100%);
+  box-shadow: 0 6px 28px rgba(233,84,32,0.45);
+}
+
+.info, .success {
+  font-size: 0.9rem;
+  line-height: 1.55;
+  margin-bottom: 1.25rem;
+  font-weight: 300;
+}
+
+.success {
+  color: var(--success);
+  text-align: center;
+  text-shadow: 0 0 20px rgba(94,232,154,0.25);
+}
+
+.steps {
+  font-size: 0.86rem;
+  color: var(--muted);
+  padding-left: 1.2rem;
+  margin-bottom: 1.25rem;
+  line-height: 1.65;
+  font-weight: 300;
+}
+
+.progress-track {
+  height: 5px;
+  background: rgba(0,0,0,0.45);
+  border-radius: 99px;
+  overflow: hidden;
+  margin-bottom: 1.1rem;
+  border: 1px solid rgba(255,255,255,0.04);
+}
+
+.progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--ubuntu-light-aubergine), var(--ubuntu-orange), #ffb380);
+  border-radius: 99px;
+  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 0 12px var(--ubuntu-orange-glow);
+}
+
+.status {
+  font-size: 0.98rem;
+  font-weight: 500;
+  margin-bottom: 0.35rem;
+}
+
+.detail {
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.45;
+  font-weight: 300;
+}
+
+.log {
+  margin-top: 0.85rem;
+  background: rgba(0,0,0,0.45);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 8px;
+  padding: 0.65rem 0.85rem;
+  font-family: 'Ubuntu Mono', 'SF Mono', Consolas, monospace;
+  font-size: 0.7rem;
+  line-height: 1.45;
+  max-height: 110px;
+  overflow-y: auto;
+  color: rgba(255,255,255,0.48);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.log.hidden { display: none; }
+
+.machine-info {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.35);
+  text-align: center;
+  line-height: 1.5;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+}

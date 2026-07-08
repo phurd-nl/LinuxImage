@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Encrypt your home folder</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div id="overlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+    <div class="dialog" id="dialog">
+      <div class="dialog-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="5" y="11" width="14" height="10" rx="2"/>
+          <path d="M8 11V7a4 4 0 1 1 8 0v4"/>
+        </svg>
+      </div>
+
+      <h1 id="dialog-title">Encrypt your home folder</h1>
+      <p class="subtitle" id="subtitle">Required setup before you can use this laptop.</p>
+
+      <!-- Secure Boot blocker -->
+      <div id="panel-secureboot" class="panel hidden">
+        <p class="info">Secure Boot must be enabled first. This protects the encryption key sealed to your TPM.</p>
+        <ol class="steps">
+          <li>Restart and open UEFI firmware (F2, Del, or Esc)</li>
+          <li>Enroll default Secure Boot keys if prompted</li>
+          <li>Enable Secure Boot → save and exit</li>
+        </ol>
+        <button type="button" class="btn" id="btn-recheck-sb">I've enabled Secure Boot</button>
+      </div>
+
+      <!-- Password entry (LUKS-style) -->
+      <form id="panel-password" class="panel" autocomplete="off">
+        <label class="field-label" for="password">Login password</label>
+        <input type="password" id="password" class="field-input" placeholder="Your Ubuntu login password"
+               autocomplete="current-password" required>
+        <p class="hint">Used to encrypt <code>/home</code>. You won't need a separate disk password.</p>
+        <p class="error hidden" id="error-msg"></p>
+        <button type="submit" class="btn btn-primary" id="btn-start">Encrypt now</button>
+      </form>
+
+      <!-- Progress -->
+      <div id="panel-progress" class="panel hidden">
+        <div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div>
+        <p class="status" id="status-text">Preparing…</p>
+        <p class="detail" id="detail-text"></p>
+        <pre class="log hidden" id="log-output"></pre>
+      </div>
+
+      <!-- Reboot -->
+      <div id="panel-reboot" class="panel hidden">
+        <p class="info">Encryption is installed. Restart now to finish setup.</p>
+        <button type="button" class="btn btn-primary" id="btn-reboot">Restart</button>
+      </div>
+
+      <!-- Complete -->
+      <div id="panel-done" class="panel hidden">
+        <p class="success">Your home folder is encrypted. You're all set.</p>
+        <button type="button" class="btn btn-primary" id="btn-close">Continue to desktop</button>
+      </div>
+
+      <footer class="machine-info" id="machine-info"></footer>
+    </div>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

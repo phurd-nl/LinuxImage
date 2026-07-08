@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LUKS + TPM /home Encryption — Setup Guide</title>
+<style>
+  :root{
+    --bg:#ffffff; --fg:#1a1a1a; --muted:#5b6470; --line:#e2e6ea;
+    --card:#f7f9fb; --code-bg:#f2f4f7; --code-fg:#1a1a1a;
+    --accent:#1f6feb; --warn-bg:#fff4e5; --warn-fg:#7a4a00; --warn-line:#e8b96a;
+    --danger-bg:#fdecec; --danger-fg:#8a1c1c; --danger-line:#e79a9a;
+    --ok-bg:#e9f7ee; --ok-fg:#14612f; --ok-line:#93d3a9;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0f1216; --fg:#e6e9ee; --muted:#9aa4b0; --line:#242b33;
+      --card:#161b22; --code-bg:#11151a; --code-fg:#e6e9ee;
+      --accent:#6ea8ff; --warn-bg:#2a2012; --warn-fg:#f0c583; --warn-line:#5c4620;
+      --danger-bg:#2a1414; --danger-fg:#f0a3a3; --danger-line:#5c2222;
+      --ok-bg:#122318; --ok-fg:#8fe0aa; --ok-line:#23482f;
+    }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  .wrap{max-width:860px; margin:0 auto; padding:2.2rem 1.2rem 5rem}
+  header h1{font-size:1.9rem; line-height:1.2; margin:.2rem 0 .4rem}
+  header p.sub{color:var(--muted); margin:.2rem 0 0}
+  h2{font-size:1.35rem; margin:2.6rem 0 .8rem; padding-bottom:.35rem; border-bottom:1px solid var(--line)}
+  h3{font-size:1.08rem; margin:1.6rem 0 .5rem}
+  a{color:var(--accent)}
+  code{background:var(--code-bg); color:var(--code-fg); padding:.12em .4em; border-radius:4px; font-size:.88em;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  pre{background:var(--code-bg); color:var(--code-fg); padding:.9rem 1rem; border-radius:8px; overflow-x:auto;
+    border:1px solid var(--line); font-size:.86rem; line-height:1.5}
+  pre code{background:none; padding:0}
+  .box{border-radius:8px; padding:.9rem 1.1rem; margin:1.1rem 0; border:1px solid var(--line); background:var(--card)}
+  .warn{background:var(--warn-bg); color:var(--warn-fg); border-color:var(--warn-line)}
+  .danger{background:var(--danger-bg); color:var(--danger-fg); border-color:var(--danger-line)}
+  .ok{background:var(--ok-bg); color:var(--ok-fg); border-color:var(--ok-line)}
+  .box strong{color:inherit}
+  .step{display:flex; gap:.9rem; align-items:baseline; margin:2.4rem 0 .6rem}
+  .step .n{flex:0 0 auto; width:2rem; height:2rem; border-radius:50%; background:var(--accent); color:#fff;
+    display:flex; align-items:center; justify-content:center; font-weight:700; font-size:.95rem}
+  .step h2{margin:0; border:none; padding:0; font-size:1.3rem; align-self:center}
+  ul,ol{padding-left:1.3rem}
+  li{margin:.3rem 0}
+  table{border-collapse:collapse; width:100%; margin:1rem 0; font-size:.9rem}
+  th,td{border:1px solid var(--line); padding:.5rem .6rem; text-align:left; vertical-align:top}
+  th{background:var(--card)}
+  .muted{color:var(--muted)}
+  .tag{display:inline-block; font-size:.72rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase;
+    padding:.12em .5em; border-radius:4px; background:var(--code-bg); color:var(--muted); border:1px solid var(--line)}
+  .toc a{display:block; padding:.15rem 0; text-decoration:none}
+  hr{border:none; border-top:1px solid var(--line); margin:2.5rem 0}
+  kbd{background:var(--code-bg); border:1px solid var(--line); border-bottom-width:2px; border-radius:4px; padding:.05em .4em; font-size:.85em}
+  @media print{
+    body{background:#fff; color:#000; font-size:12pt}
+    .box{border:1px solid #999}
+    pre{border:1px solid #999; white-space:pre-wrap; word-break:break-word}
+    a{color:#000; text-decoration:underline}
+    .step .n{background:#000; -webkit-print-color-adjust:exact; print-color-adjust:exact}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>LUKS&nbsp;+&nbsp;TPM Login-Time <code>/home</code> Encryption</h1>
+  <p class="sub">Setup guide for the <code>LinuxEncryption</code> scripts. Encrypts <code>/home</code> with LUKS2, seals the unlock key to the TPM (clevis&nbsp;tpm2), and auto-unlocks it at login via PAM.</p>
+</header>
+
+<div class="box danger">
+  <strong>These scripts are destructive and they touch disk partitions and LUKS keyslots.</strong>
+  Read this whole page once before running anything. A single wrong value in <code>scripts/config.sh</code>
+  can reformat the wrong drive. Have a working, off-machine backup before step&nbsp;1, and store the recovery
+  passphrase somewhere physical. When in doubt, stop and inspect — every script guards before acting and aborts loudly.
+</div>
+
+<h2>What you get</h2>
+<ul>
+  <li><code>/home</code> lives on an encrypted LUKS2 volume; it is encrypted at rest whenever you are logged out.</li>
+  <li>At login, a PAM hook has the TPM release the key, opens the volume, mounts it at <code>/home</code>, and shreds the key from memory. At logout it unmounts and re-locks.</li>
+  <li>Three ways in: <strong>keyslot&nbsp;0</strong> = your login password (kept in sync automatically), <strong>keyslot&nbsp;1</strong> = an offline recovery passphrase, <strong>keyslot&nbsp;2</strong> = the TPM-sealed random key.</li>
+  <li>Swap lives <em>inside</em> the encrypted volume, so it is also encrypted at rest. Suspend-to-disk is disabled.</li>
+  <li>After hardening, the key is sealed to <strong>PCR&nbsp;7 only</strong> (Secure Boot state) so routine firmware/BIOS updates don't lock you out, with a self-heal path for the rare Secure-Boot-key change.</li>
+</ul>
+
+<h2>Requirements</h2>
+<table>
+  <tr><th>Need</th><th>Why</th></tr>
+  <tr><td>UEFI machine with a TPM 2.0 (<code>/dev/tpmrm0</code>)</td><td>Holds the sealed key; released only when PCRs match.</td></tr>
+  <tr><td>Secure Boot capable (enabled in step&nbsp;1)</td><td>PCR&nbsp;7 measures Secure Boot state — the trust anchor after hardening.</td></tr>
+  <tr><td>Free unpartitioned space, or a spare partition, on the target disk</td><td><code>01</code> creates the LUKS partition from free space.</td></tr>
+  <tr><td>Ubuntu (developed on 26.04) with <code>sudo</code></td><td>Scripts install <code>cryptsetup clevis clevis-tpm2 tpm2-tools</code> etc.</td></tr>
+  <tr><td>An off-machine backup of the home directory</td><td>The partition-table edit and the later wipe are the risky steps.</td></tr>
+</table>
+
+<h2>The scripts at a glance</h2>
+<table>
+  <tr><th>Script</th><th>Role</th></tr>
+  <tr><td><code>config.sh</code></td><td><span class="tag">edit first</span> Machine/user values sourced by everything else. Not run directly.</td></tr>
+  <tr><td><code>01-create-partition.sh</code></td><td>Creates the LUKS partition in free space. Refuses if it already exists.</td></tr>
+  <tr><td><code>02-setup-encryption.sh</code></td><td>Formats + migrates <code>/home</code> + seals to TPM + installs the PAM hooks. Leaves the old plaintext copy intact.</td></tr>
+  <tr><td><code>08-harden-tpm-pcr7-selfheal.sh</code></td><td>Re-seals to PCR&nbsp;7 only + installs self-heal. Recommended for every setup.</td></tr>
+  <tr><td><code>04-purge-shadowed-plaintext-home.sh</code></td><td><span class="tag">irreversible</span> Wipes the old plaintext <code>/home</code>. Only after reboot proves the encrypted one works.</td></tr>
+  <tr><td><code>verify-encryption.sh</code>, <code>after-reboot.sh</code>, <code>check.sh</code></td><td>Read-only diagnostics.</td></tr>
+  <tr><td><code>test-selfheal.sh</code></td><td>Proves the self-heal credential capture works, without waiting for a real drift.</td></tr>
+  <tr><td><code>05</code>, <code>06</code>, <code>07</code>, <code>clevis-reheal</code>, <code>clevis-reseal</code></td><td>Recovery &amp; maintenance tools — see <a href="#recovery">Recovery</a>.</td></tr>
+</table>
+
+<div class="box"><strong>How to run each script:</strong> from the repo root,
+<code>sudo bash scripts/&lt;name&gt;.sh</code>. The numbered scripts must run in order and log to <code>/var/log/luks-*.log</code>.</div>
+
+<hr>
+
+<div class="step"><div class="n">0</div><h2 id="s0">Configure &amp; back up</h2></div>
+<p>Edit <code>scripts/config.sh</code> for the target machine. These four values are the only things that identify your box — everything else (install paths, PCR policy) is a design constant.</p>
+<pre><code>DISK=/dev/nvme0n1     # whole disk that gets the new partition
+PARTNUM=4             # partition number to create / encrypt
+USERNAME=phurd        # login user whose /home is encrypted
+MAPPER=home_crypt     # /dev/mapper name for the opened volume</code></pre>
+<p><code>LUKS_DEV</code> is derived automatically (<code>nvme0n1</code>&nbsp;+&nbsp;<code>4</code>&nbsp;→&nbsp;<code>/dev/nvme0n1p4</code>; <code>sda</code>&nbsp;+&nbsp;<code>2</code>&nbsp;→&nbsp;<code>/dev/sda2</code>). Confirm your disk and free space against reality, and sanity-check the derivation:</p>
+<pre><code>lsblk -o NAME,SIZE,FSTYPE,TYPE,MOUNTPOINT   # find your disk &amp; free space
+bash scripts/test-config.sh                 # verify the LUKS_DEV derivation rule</code></pre>
+<div class="box warn"><strong>Then back up.</strong> Copy the user's home directory to an external drive or network location. The original stays in place until step&nbsp;6, but the off-machine backup is your net for the partition-table edit.</div>
+
+<div class="step"><div class="n">1</div><h2 id="s1">Enable Secure Boot</h2></div>
+<p>Reboot into UEFI firmware → enroll / restore the default Secure Boot keys (if the platform is in Setup Mode) → enable Secure Boot → save &amp; exit. Back in Linux, confirm:</p>
+<pre><code>mokutil --sb-state        # must say: SecureBoot enabled</code></pre>
+<p class="muted">Why first: PCR&nbsp;7 measures Secure Boot state. Enabling it before sealing makes the seal stable and avoids an immediate re-seal.</p>
+
+<div class="step"><div class="n">2</div><h2 id="s2">Create the encrypted partition</h2></div>
+<pre><code>sudo bash scripts/01-create-partition.sh</code></pre>
+<p>Shows the current layout, then creates the partition from the largest free block. It refuses if the partition already exists and never touches existing partitions. Type <kbd>CREATE</kbd> to proceed.</p>
+
+<div class="step"><div class="n">3</div><h2 id="s3">Encrypt, migrate, seal, wire up PAM</h2></div>
+<pre><code>sudo bash scripts/02-setup-encryption.sh</code></pre>
+<p>This is the main event. It will:</p>
+<ol>
+  <li>Pre-flight: refuses unless Secure Boot is on, TPM is present, and the target partition is empty and unmounted.</li>
+  <li>Install packages, then LUKS2-format the partition. <strong>At the first prompt, enter your login password</strong> — it becomes keyslot&nbsp;0.</li>
+  <li>Copy <code>/home</code> into the encrypted volume (original left intact) and create an encrypted swapfile inside it.</li>
+  <li><strong>Add a recovery passphrase (keyslot&nbsp;1).</strong> Choose a strong one and <strong>write it down / store it offline right now</strong> — this is your only way in if the TPM is ever cleared.</li>
+  <li>Generate a random key (keyslot&nbsp;2), seal it to the TPM, verify it unseals, and shred the plaintext key.</li>
+  <li>Install the login open/close hooks, the password-sync hook, and the kernel-update reseal hook; wire them into PAM.</li>
+</ol>
+<div class="box warn">At this point the original plaintext <code>/home</code> still exists on the unencrypted root partition. That is intentional — you do not wipe it until a reboot proves the encrypted volume works.</div>
+
+<div class="step"><div class="n">4</div><h2 id="s4">Reboot and verify</h2></div>
+<p>Reboot (a fresh boot is the real test, not just re-login), log in, then:</p>
+<pre><code>sudo bash scripts/after-reboot.sh         # is /home the encrypted volume this boot?
+sudo bash scripts/verify-encryption.sh    # full non-destructive check (slots, JWE, hooks, PAM, swap)</code></pre>
+<p>You want <code>findmnt /home</code> to show <code>/dev/mapper/&lt;MAPPER&gt;</code> and <code>verify-encryption.sh</code> to end with <strong>FAIL=0</strong>. Then log out and back in and re-run <code>verify-encryption.sh</code> to confirm the steady-state login mount.</p>
+<div class="box danger">Do <strong>not</strong> proceed to the wipe (step&nbsp;6) until this passes cleanly across a real reboot <em>and</em> a logout/login cycle.</div>
+
+<div class="step"><div class="n">5</div><h2 id="s5">Harden against firmware updates</h2></div>
+<p>Out of the box the key is sealed to PCRs 0,2,4,7 — PCR&nbsp;0 changes on every firmware update, which would lock out auto-unlock. This re-seals to <strong>PCR&nbsp;7 only</strong> and installs a self-heal path. Run it while logged in with <code>/home</code> unlocked:</p>
+<pre><code>sudo bash scripts/08-harden-tpm-pcr7-selfheal.sh</code></pre>
+<p>Then confirm the self-heal credential path works end-to-end (it does not touch keyslots or the sealed key):</p>
+<pre><code>sudo bash scripts/test-selfheal.sh arm
+sudo -k ; sudo -v                          # one authentication (same PAM path as GDM)
+sudo bash scripts/test-selfheal.sh check</code></pre>
+<p>Reboot once more and re-run <code>after-reboot.sh</code> + <code>verify-encryption.sh</code>. After this, run firmware/BIOS updates normally — no manual reseal needed.</p>
+<div class="box"><span class="tag">tradeoff</span> Sealing to PCR&nbsp;7 only means the seal no longer detects firmware tampering (it still detects booting a different or unsigned OS). With Secure Boot enforcing signatures this is the standard, accepted choice. Your recovery passphrase remains the floor.</div>
+
+<div class="step"><div class="n">6</div><h2 id="s6">Wipe the old plaintext <code>/home</code></h2></div>
+<div class="box danger"><strong>Irreversible.</strong> Only after steps&nbsp;4–5 passed across a reboot, and your backup is intact.</div>
+<pre><code>sudo bash scripts/04-purge-shadowed-plaintext-home.sh</code></pre>
+<p>The old plaintext copy of <code>/home</code> still sits, shadowed, on the unencrypted root partition underneath the encrypted mount. This bind-mounts the real root filesystem to reach it and deletes it, with hard guards: it refuses unless the live <code>/home</code> is the encrypted mapper <em>and</em> the shadowed copy is on a different block device. Type <kbd>WIPE</kbd> to confirm. It optionally scrubs the freed blocks afterward.</p>
+<div class="box ok"><strong>Done.</strong> Your home data now exists only on the encrypted volume. Verify one last time with <code>verify-encryption.sh</code>.</div>
+
+<hr>
+
+<h2 id="recovery">Recovery &amp; maintenance</h2>
+<p>Keep this section — and your recovery passphrase — reachable from a different machine or on paper.</p>
+
+<h3>Everyday facts</h3>
+<ul>
+  <li><strong>Change your login password normally.</strong> The password-sync hook keeps keyslot&nbsp;0 in step. If it ever drifts, the recovery passphrase (keyslot&nbsp;1) still works.</li>
+  <li><strong>Firmware/BIOS updates</strong> are fine after step&nbsp;5. A rare Secure-Boot-key change may trigger self-heal on the next login (transparent).</li>
+  <li><strong>Kernel updates</strong> are handled by the installed <code>clevis-reseal</code> hook.</li>
+</ul>
+
+<h3>If <code>/home</code> did not auto-unlock at login</h3>
+<p>The login hook is <code>session optional</code>, so on failure it silently drops to a plaintext <code>/home</code> rather than locking you out. Diagnose, then reseal:</p>
+<pre><code>journalctl -t home-crypt -b               # what the hook logged this boot
+# unlock manually with a passphrase you know, then reseal to current PCRs:
+sudo clevis-reheal                        # prompts for login OR recovery passphrase</code></pre>
+
+<h3>Recovery tools</h3>
+<table>
+  <tr><th>Command</th><th>Use</th></tr>
+  <tr><td><code>sudo bash scripts/05-add-recovery-passphrase.sh</code></td><td>Add a fresh offline recovery passphrase to a free keyslot (non-destructive). Do this first if the original was lost.</td></tr>
+  <tr><td><code>sudo bash scripts/06-restore-tpm-autounlock.sh</code></td><td>Rebuild the TPM-sealed key + all hooks + PAM wiring after a firmware event or reinstall wiped them. Idempotent.</td></tr>
+  <tr><td><code>sudo bash scripts/07-cleanup-stray-slots.sh</code></td><td>Remove stray clevis tokens / orphaned keyslots. Refuses unless a passphrase you know still opens the volume.</td></tr>
+  <tr><td><code>sudo clevis-reheal</code></td><td>Manually re-seal to the current PCR&nbsp;7 using any working passphrase. The explicit fallback when hands-off self-heal can't run.</td></tr>
+  <tr><td><code>sudo clevis-reseal</code></td><td>Re-seal to the current PCR values (used automatically by the kernel-update hook).</td></tr>
+</table>
+<div class="box warn"><strong>Before removing any keyslot</strong> (07 or a manual <code>luksKillSlot</code>): prove a known passphrase still opens the volume. Keep at minimum keyslot&nbsp;0 (login), your recovery passphrase, and the TPM keyslot. Losing the wrong slot is irreversible.</div>
+
+<h3>Last-resort: unlock from a live USB</h3>
+<p>If the PAM hook is broken and you can't log in, boot a live USB and open the volume with your recovery passphrase:</p>
+<pre><code>sudo cryptsetup open /dev/&lt;your-partition&gt; recovered   # enter recovery passphrase
+sudo mount /dev/mapper/recovered /mnt                  # your data is under /mnt</code></pre>
+
+<hr>
+<p class="muted">This guide is generated from the scripts in <code>scripts/</code>. The authoritative narrative and verified hardware facts live in <code>RUNBOOK.md</code>; safety rules and conventions live in <code>CLAUDE.md</code>. When they disagree with a stale doc, the scripts win.</p>
+
+</div>
+</body>
+</html>

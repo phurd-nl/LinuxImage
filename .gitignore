@@ -1,0 +1,7 @@
+build/
+imaging/seed/
+webgui/.venv/
+webgui/__pycache__/
+__pycache__/
+*.pyc
+.claude/

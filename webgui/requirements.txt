@@ -1,0 +1,2 @@
+# No pip dependencies — server.py uses Python 3 stdlib only.
+# Kept for documentation; install script does not require this file.

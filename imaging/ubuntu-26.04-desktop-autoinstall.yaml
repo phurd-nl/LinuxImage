@@ -1,0 +1,108 @@
+# Ubuntu 26.04 Desktop — autoinstall for LinuxEncryption golden images
+#
+# USB layout (NoCloud / OEM):
+#   nocloud/
+#     user-data          ← copy this file (or symlink)
+#     meta-data          ← imaging/meta-data
+#     extras/
+#       linux-encryption-setup.tar.gz   ← built by imaging/build-imaging-seed.sh
+#       late-install-linux-encryption.sh
+#
+# Requirements on target hardware:
+#   - TPM 2.0, Secure Boot capable (user enables SB at first boot if needed)
+#   - ≥50 GB unallocated free space AFTER install (this file leaves it at disk end)
+#
+# First boot: fullscreen LUKS password box → user enters login password → auto encrypt.
+
+autoinstall:
+  version: 1
+
+  # Refresh installer snap for 26.04
+  refresh-installer:
+    update: true
+    channel: stable/ubuntu-$REL
+
+  # Desktop minimal — adjust id per casper/install-sources.yaml on your ISO
+  source:
+    id: ubuntu-desktop-minimal
+    search_drivers: true
+
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+
+  # Network: DHCP; make interactive if you want techs to pick Wi-Fi
+  network:
+    version: 2
+    ethernets:
+      all-en:
+        match:
+          name: "en*"
+        dhcp4: true
+      all-eth:
+        match:
+          name: "eth*"
+        dhcp4: true
+
+  # CRITICAL: create uid-1000 user during install (wizard auto-detects this user).
+  # Do NOT leave identity blank — GDM first-login wizard fights our encryption wizard.
+  identity:
+    hostname: ubuntu-laptop
+    username: user
+    password: "ChangeMeOnFirstLogin!"   # user should change via passwd after imaging test
+
+  # Leave ≥50 GB unallocated at end of largest disk for encrypted /home (script 01).
+  # Adjust root size for your fleet; smaller root = more free space for /home.
+  storage:
+    config:
+      - type: disk
+        id: disk0
+        match:
+          size: largest
+      - type: partition
+        id: partition-efi
+        device: disk0
+        size: 1G
+        flag: esp
+      - type: partition
+        id: partition-root
+        device: disk0
+        size: 100G
+      - type: format
+        id: fmt-efi
+        fstype: fat32
+        volume: partition-efi
+      - type: format
+        id: fmt-root
+        fstype: ext4
+        volume: partition-root
+      - type: mount
+        device: fmt-efi
+        path: /boot/efi
+      - type: mount
+        device: fmt-root
+        path: /
+
+  # Pre-install packages the wizard and encryption pipeline need
+  packages:
+    - python3
+    - curl
+    - gdisk
+    - cryptsetup
+    - clevis
+    - clevis-tpm2
+    - tpm2-tools
+    - mokutil
+    - pamtester
+    - chromium-browser
+
+  updates: security
+
+  # Copy bundled artifact from USB, then install wizard inside target system
+  late-commands:
+    - ["bash", "-c", "mkdir -p /target/opt"]
+    - ["bash", "-c", "ART=''; for p in /cdrom/nocloud/extras/linux-encryption-setup.tar.gz /cdrom/extras/linux-encryption-setup.tar.gz /mnt/nocloud/extras/linux-encryption-setup.tar.gz; do [ -f \"$p\" ] && ART=\"$p\" && break; done; [ -n \"$ART\" ] || { echo 'Missing linux-encryption-setup.tar.gz on USB'; exit 1; }; cp \"$ART\" /target/opt/linux-encryption-setup.tar.gz"]
+    - ["bash", "-c", "SCRIPT=''; for p in /cdrom/nocloud/extras/late-install-linux-encryption.sh /cdrom/extras/late-install-linux-encryption.sh; do [ -f \"$p\" ] && SCRIPT=\"$p\" && break; done; [ -n \"$SCRIPT\" ] || { echo 'Missing late-install-linux-encryption.sh on USB'; exit 1; }; cp \"$SCRIPT\" /target/opt/late-install-linux-encryption.sh; chmod 755 /target/opt/late-install-linux-encryption.sh"]
+    - ["curtin", "in-target", "--", "bash", "/opt/late-install-linux-encryption.sh"]
+
+  shutdown: reboot
