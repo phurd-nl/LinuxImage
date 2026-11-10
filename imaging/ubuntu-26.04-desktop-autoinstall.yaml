@@ -83,6 +83,10 @@ autoinstall:
       Acquire::Languages "none";
       Acquire::Retries "3";
   early-commands:
+    # Stop now, with the reason on screen, if TPM disk encryption is not available
+    # (for example a TPM still owned from Windows/BitLocker). Otherwise the installer
+    # quietly installs an unencrypted laptop. A failed download does not block the install.
+    - ["bash", "-c", "python3 -c \"import urllib.request as u; open('/tmp/check-tpm-encryption.py','wb').write(u.urlopen('http://192.168.26.106:8090/nocloud/extras/check-tpm-encryption.py', timeout=30).read())\" || exit 0; python3 /tmp/check-tpm-encryption.py"]
     - ["bash", "-c", "install -d /etc/apt/apt.conf.d; printf '%s\\n' 'Acquire::http::Timeout \"15\";' 'Acquire::https::Timeout \"15\";' 'Acquire::Retries \"0\";' > /etc/apt/apt.conf.d/99nextlink-timeout"]
   updates: security
 

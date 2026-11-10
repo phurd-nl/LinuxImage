@@ -36,7 +36,7 @@ casper=/opt/linuximage/casper
 cp -a "$casper/initrd.auto" "$casper/initrd.auto.bak-$(date +%Y%m%d%H%M)"
 cat "$casper/initrd.auto.base" "$nc/seed.cpio" > "$casper/initrd.auto.new"
 mv "$casper/initrd.auto.new" "$casper/initrd.auto"
-for f in imaging/late-install-linux-encryption.sh scripts/imaging-firstboot.sh scripts/ubuntu_apps.py; do
+for f in imaging/late-install-linux-encryption.sh imaging/check-tpm-encryption.py scripts/imaging-firstboot.sh scripts/ubuntu_apps.py; do
     install -m 755 "$repo/$f" "$nc/extras/$(basename "$f")"
 done
 rm -rf "$work"

@@ -100,7 +100,7 @@ chmod 755 "$INSTALL_ROOT/scripts/imaging-firstboot.sh" 2>/dev/null || true
 cat > /etc/systemd/system/imaging-firstboot.service << 'UNIT'
 [Unit]
 Description=File the disk recovery key and send the imaging report
-After=network-online.target snapd.seeded.service
+After=network-online.target snapd.seeded.service nextlink-entra-authd.service
 Wants=network-online.target
 ConditionPathExists=!/var/lib/linux-encryption-setup/report-sent
 StartLimitIntervalSec=0
