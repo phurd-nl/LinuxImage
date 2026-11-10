@@ -97,15 +97,24 @@ if lspci 2>/dev/null | grep -qi nvidia; then
   else problems+=("NVIDIA GPU found but its driver is not loaded. Run: sudo ubuntu-drivers install"); fi
 fi
 nmcli -t -f NAME connection show 2>/dev/null | grep -qx "Nextlink_Corp" || problems+=("Office Wi-Fi (Nextlink_Corp) is not configured.")
-for svc in wazuh-agent; do
-  systemctl is-active --quiet "$svc" || problems+=("$svc is not running.")
+# Agents, shown on the ticket like Windows. Services can still be starting on first boot.
+atera=false; wazuh=false; unifi=false
+for _ in $(seq 1 12); do
+  systemctl is-active --quiet AteraAgent.service && atera=true
+  systemctl is-active --quiet wazuh-agent.service && wazuh=true
+  [ "$atera" = true ] && [ "$wazuh" = true ] && break
+  sleep 5
 done
+dpkg-query -W -f='${Status}' unifi-endpoint 2>/dev/null | grep -q "install ok installed" && unifi=true
+[ "$atera" = true ] || problems+=("Atera agent is not running.")
+[ "$wazuh" = true ] || problems+=("Wazuh agent is not running.")
+[ "$unifi" = true ] || problems+=("UniFi Endpoint is not installed.")
 
 PROBLEMS=$(IFS=$'\x1f'; printf '%s' "${problems[*]:-}")
 CHECKS=$(IFS=$'\x1f'; printf '%s' "${checks[*]:-}")
-report=$(STATE="$STATE" PROBLEMS="$PROBLEMS" CHECKS="$CHECKS" python3 - "$secure_boot" "$tpm" "$entra" "$encryption" "$macs" <<'PY'
+report=$(STATE="$STATE" PROBLEMS="$PROBLEMS" CHECKS="$CHECKS" python3 - "$secure_boot" "$tpm" "$entra" "$encryption" "$macs" "$atera" "$wazuh" "$unifi" <<'PY'
 import json, os, sys, pathlib, time
-sb, tpm, entra, enc, macs = sys.argv[1:6]
+sb, tpm, entra, enc, macs, atera, wazuh, unifi = sys.argv[1:9]
 def dmi(name):
     try: return pathlib.Path(f"/sys/class/dmi/id/{name}").read_text().strip()
     except OSError: return ""
@@ -121,6 +130,7 @@ print(json.dumps({
     "manufacturer": dmi("sys_vendor"), "model": dmi("product_version") if dmi("sys_vendor") == "LENOVO" else dmi("product_name"),
     "hostname": os.uname().nodename, "entra_joined": entra == "true", "secure_boot": sb == "true",
     "tpm_ready": tpm == "true", "encryption": enc, "apps_ok": apps.get("ok", []), "apps_failed": apps.get("failed", []),
+    "agents": {"atera": atera == "true", "wazuh": wazuh == "true", "unifi": unifi == "true"},
     "problems": problems, "checks": checks, "finished": time.strftime("%Y-%m-%d %H:%M"),
 }))
 PY

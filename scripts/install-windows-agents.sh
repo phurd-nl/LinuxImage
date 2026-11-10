@@ -54,7 +54,20 @@ if fetch_for_mac atera /tmp/atera-install.url; then
   rm -f /tmp/atera-install.url
   if [ -n "$ATERA_URL" ]; then
     echo "[agents] installing Atera"
-    curl -fsSL "$ATERA_URL" | bash || echo "[agents] WARN Atera install failed"
+    # Atera's script ends with systemctl daemon-reload/enable/start, which fail in the
+    # installer chroot (no running systemd). Its files and settings are in place by then,
+    # so enable the unit with a plain symlink; it starts on the first real boot.
+    curl -fsSL "$ATERA_URL" | bash || true
+    unit=/etc/systemd/system/AteraAgent.service
+    if [ -f /etc/atera-agent/.settings.json ] && [ -f "$unit" ]; then
+      want=$(sed -n 's/^WantedBy=//p' "$unit" | head -n 1)
+      want=${want:-multi-user.target}
+      mkdir -p "/etc/systemd/system/${want}.wants"
+      ln -sf ../AteraAgent.service "/etc/systemd/system/${want}.wants/AteraAgent.service"
+      echo "[agents] Atera installed; it starts on first boot"
+    else
+      echo "[agents] WARN Atera install failed"
+    fi
   fi
 else
   echo "[agents] Atera installer not available for this laptop"
