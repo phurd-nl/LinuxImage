@@ -37,28 +37,7 @@ if [ -f /tmp/kiosk-scripts/ubuntu_apps.py ]; then
   echo "== Saving the kiosk software list while the imaging cable is up =="
   python3 /tmp/kiosk-scripts/ubuntu_apps.py --save /var/lib/linux-encryption-setup/kiosk-selection.json || echo "WARN: kiosk list not saved"
 fi
-if curl -fsSL "http://192.168.26.106:8090/nocloud/extras/recovery_passphrase.py" -o /tmp/kiosk-scripts/recovery_passphrase.py; then
-  echo "== Filing the recovery phrase while the imaging cable is up =="
-  python3 /tmp/kiosk-scripts/recovery_passphrase.py --pull || echo "WARN: recovery phrase not saved"
-else
-  echo "WARN: recovery phrase script was not downloaded"
-fi
-if curl -fsSL "http://192.168.26.106:8090/nocloud/extras/pull-install-password.py" -o /tmp/kiosk-scripts/pull-install-password.py; then
-  echo "== Saving the install password for unattended encryption =="
-  python3 /tmp/kiosk-scripts/pull-install-password.py || echo "WARN: install password not saved"
-fi
-
-echo "== Entra password will replace the install password on first sign-in =="
-install -d -m 755 /usr/local/sbin /var/lib/linux-encryption-setup
-if curl -fsSL "http://192.168.26.106:8090/nocloud/extras/entra-luks-sync.sh" -o /usr/local/sbin/entra-luks-sync; then
-  chmod 700 /usr/local/sbin/entra-luks-sync
-  grep -q entra-luks-sync /etc/pam.d/common-auth || \
-    echo "auth optional pam_exec.so expose_authtok quiet /usr/local/sbin/entra-luks-sync" >> /etc/pam.d/common-auth
-  grep -q entra-luks-sync /etc/pam.d/common-password || \
-    echo "password optional pam_exec.so expose_authtok quiet /usr/local/sbin/entra-luks-sync" >> /etc/pam.d/common-password
-else
-  echo "WARN: entra passphrase sync was not installed"
-fi
+# Disk encryption is done by the installer (TPM-backed full disk). Nothing to fetch here.
 
 echo "== Extracting LinuxEncryption =="
 tar -xzf "$ARTIFACT" -C /opt
@@ -72,10 +51,6 @@ if curl -fsSL "http://192.168.26.106:8090/nocloud/extras/setup_engine.py" -o "$I
   chmod 644 "$INSTALL_ROOT/webgui/setup_engine.py"
 else
   echo "WARN: encryption wizard was not refreshed"
-fi
-if [ -f /tmp/kiosk-scripts/recovery_passphrase.py ]; then
-  cp /tmp/kiosk-scripts/recovery_passphrase.py "$INSTALL_ROOT/scripts/recovery_passphrase.py"
-  chmod 755 "$INSTALL_ROOT/scripts/recovery_passphrase.py"
 fi
 
 echo "== Installing wizard service + kiosk autostart =="
@@ -120,33 +95,27 @@ cat > /var/lib/AccountsService/users/nextadmin << 'EOF'
 SystemAccount=true
 EOF
 dconf update || true
-for extra in unattended-encrypt.sh finish-after-login.sh pull-install-password.py; do
-  curl -fsSL "http://192.168.26.106:8090/nocloud/extras/$extra" -o "$INSTALL_ROOT/scripts/$extra" || true
-done
-chmod 755 "$INSTALL_ROOT/scripts/unattended-encrypt.sh" "$INSTALL_ROOT/scripts/finish-after-login.sh" "$INSTALL_ROOT/scripts/pull-install-password.py" 2>/dev/null || true
-if [ -x "$INSTALL_ROOT/scripts/unattended-encrypt.sh" ]; then
-  cat > /etc/systemd/system/linux-encryption-unattended.service << 'EOF'
+fetch_extra imaging-firstboot.sh "$INSTALL_ROOT/scripts/imaging-firstboot.sh" || true
+chmod 755 "$INSTALL_ROOT/scripts/imaging-firstboot.sh" 2>/dev/null || true
+cat > /etc/systemd/system/imaging-firstboot.service << 'UNIT'
 [Unit]
-Description=Encrypt /home
-After=local-fs.target systemd-user-sessions.service
-ConditionPathExists=!/var/lib/linux-encryption-setup/completed_at
+Description=File the disk recovery key and send the imaging report
+After=network-online.target snapd.seeded.service
+Wants=network-online.target
+ConditionPathExists=!/var/lib/linux-encryption-setup/report-sent
+StartLimitIntervalSec=0
 
 [Service]
 Type=oneshot
-RemainAfterExit=yes
-ExecStartPre=/bin/sh -c 'echo "Preparing encrypted home." >/dev/console'
-ExecStart=/opt/linux-encryption-setup/scripts/unattended-encrypt.sh
-StandardOutput=journal+console
-StandardError=journal+console
-TimeoutStartSec=900
+ExecStart=/opt/linux-encryption-setup/scripts/imaging-firstboot.sh
+Restart=on-failure
+RestartSec=120
 
 [Install]
 WantedBy=multi-user.target
-EOF
-  mkdir -p /etc/systemd/system/multi-user.target.wants
-  ln -sfn /etc/systemd/system/linux-encryption-unattended.service /etc/systemd/system/multi-user.target.wants/linux-encryption-unattended.service
-  echo "Encrypted /home is created without holding the sign-in screen"
-fi
+UNIT
+mkdir -p /etc/systemd/system/multi-user.target.wants
+ln -sfn /etc/systemd/system/imaging-firstboot.service /etc/systemd/system/multi-user.target.wants/imaging-firstboot.service
 
 echo "== Applying laptop baseline (firewall, no discovery listeners, Timeshift) =="
 for extra in harden-image-baseline.sh setup-timeshift.sh; do

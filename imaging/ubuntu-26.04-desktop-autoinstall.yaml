@@ -52,45 +52,13 @@ autoinstall:
     # wizard ("I was given a temporary password").
     password: "__TEMP_PASSWORD__"
 
-  # Leave ≥50 GB unallocated at end of largest disk for encrypted /home (script 01).
-  # 40 GB root fits a 256 GB laptop: about 20 GB holds the desktop, the rest
-  # of the drive (about 197 GB) becomes encrypted /home, including Timeshift.
+  # Whole-disk encryption unlocked by the TPM (Ubuntu's TPM-backed FDE).
+  # Needs Secure Boot on. The installer makes its own recovery key;
+  # imaging-firstboot.sh files it with the imaging host.
   storage:
-    config:
-      - type: disk
-        id: disk0
-        ptable: gpt
-        wipe: superblock-recursive
-        preserve: false
-        grub_device: true
-        match:
-          size: largest
-      - type: partition
-        id: partition-efi
-        device: disk0
-        size: 1G
-        flag: boot
-        grub_device: true
-      - type: partition
-        id: partition-root
-        device: disk0
-        size: 40G
-      - type: format
-        id: fmt-efi
-        fstype: fat32
-        volume: partition-efi
-      - type: format
-        id: fmt-root
-        fstype: ext4
-        volume: partition-root
-      - type: mount
-        id: mount-efi
-        device: fmt-efi
-        path: /boot/efi
-      - type: mount
-        id: mount-root
-        device: fmt-root
-        path: /
+    layout:
+      name: hybrid
+      encrypted: yes
 
   # Pre-install packages the wizard and encryption pipeline need
   packages:

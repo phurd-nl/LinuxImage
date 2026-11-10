@@ -1,0 +1,27 @@
+#!/bin/sh
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in
+prereqs) prereqs; exit 0 ;;
+esac
+[ -f /seed/user-data ] || exit 0
+copy_seed() {
+    dest="$1"
+    [ -n "$dest" ] && [ -d "$dest" ] || return 0
+    mkdir -p "$dest/var/lib/cloud/seed/nocloud" "$dest/etc/cloud/cloud.cfg.d"
+    cp /seed/user-data "$dest/var/lib/cloud/seed/nocloud/user-data"
+    cp /seed/meta-data "$dest/var/lib/cloud/seed/nocloud/meta-data"
+    cp /seed/user-data "$dest/autoinstall.yaml"
+    cat > "$dest/etc/cloud/cloud.cfg.d/99-nextlink-nocloud.cfg" << 'CFG'
+datasource_list: [ NoCloud, None ]
+datasource:
+  NoCloud:
+    seedfrom: file:///var/lib/cloud/seed/nocloud/
+CFG
+    return 0
+}
+copy_seed /root
+if [ -n "${rootmnt:-}" ]; then
+    copy_seed "$rootmnt"
+fi
+exit 0

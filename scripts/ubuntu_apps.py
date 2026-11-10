@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import pathlib
 import subprocess
 import urllib.parse
 import urllib.request
 
 HOST = "http://192.168.26.106:8091"
+# Read by imaging-firstboot.sh for the NextDesk report.
+RESULT = pathlib.Path("/var/lib/linux-encryption-setup/apps-result.json")
 # Apt names in Ubuntu 26.04. Chrome is a deb because it is not in the archive.
 APT = {
     "firefox": ["firefox"],
@@ -222,6 +225,12 @@ def main() -> int:
         inst = subprocess.run(["apt-get", "install", "-y", path], check=False)
         if inst.returncode != 0:
             failed.append(deb["id"])
+    wanted = list(body["apt"]) + [deb["id"] for deb in body["debs"]]
+    try:
+        RESULT.parent.mkdir(parents=True, exist_ok=True)
+        RESULT.write_text(json.dumps({"ok": [a for a in wanted if a not in failed], "failed": failed}))
+    except OSError:
+        pass
     if failed:
         print("FAILED " + ",".join(failed))
         return 1
