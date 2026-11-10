@@ -80,6 +80,23 @@ names and the broken keyfile mechanism in `linux-encryption-proposal-1.html`.
 
 Self-heal (script `08`, also run at end of `06`): on PCR-7 drift, auth stashes the login password in root-only tmpfs for ≤60s; session open reseals and shreds. Stash is never reused if stale.
 
+## Secure Boot override (tech only)
+
+If a machine misreports Secure Boot (or you knowingly accept the weaker
+guarantee), a tech can bypass the wizard's Secure Boot gate:
+`sudo touch /var/lib/linux-encryption-setup/secureboot-override`.
+With SB actually off, PCR 7 no longer proves boot integrity — an attacker
+booting their own OS can get the TPM to unseal. Prefer fixing SB in firmware.
+If SB is enabled later, PCR 7 changes and self-heal re-seals on next login.
+
+## Tech-build temp passwords
+
+Techs may build a laptop with a temporary login password. At the first-boot
+wizard the user ticks "I was given a temporary password", enters the temp
+password + their new one; the wizard verifies the temp password, changes the
+account password (root `chpasswd`), resets the (empty) GNOME keyring, and the
+NEW password becomes LUKS keyslot 0. No extra tech steps.
+
 ## TODO (optional ops checks)
 
 - [ ] **Test reseal:** `sudo /usr/local/sbin/clevis-reseal` then confirm unseal still works.

@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Imaging SOP</title>
+  <style>
+    :root {
+      --background: #0b1020;
+      --surface: #141b2d;
+      --surface-muted: #1c253b;
+      --text: #e8eef9;
+      --muted: #c5d0e4;
+      --border: #31415f;
+      --accent: #93c5fd;
+      --warning: #fde68a;
+      --warning-soft: #78350f;
+      --positive: #bbf7d0;
+      --positive-soft: #14532d;
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--background); color: var(--text); font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; line-height: 1.5; }
+    body { margin: 0; }
+    a { color: var(--accent); }
+    .page { margin: 0 auto; max-width: 48rem; padding: 2rem 1.25rem 4rem; }
+    h1 { font-size: clamp(1.8rem, 4vw, 2.4rem); letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 0.6rem; }
+    h2 { font-size: 1.25rem; margin: 2rem 0 0.6rem; }
+    p, li { color: var(--muted); }
+    .lede { font-size: 1.05rem; }
+    .meta { color: var(--accent); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+    ol.steps { padding-left: 1.2rem; }
+    ol.steps li { margin: 0.7rem 0; }
+    ol.steps strong { color: var(--text); }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 0.75rem; padding: 0.9rem 1rem; margin: 1rem 0; }
+    .warn { background: var(--warning-soft); border-color: #92400e; }
+    .ok { background: var(--positive-soft); border-color: #166534; }
+    .warn p, .ok p { color: var(--text); margin: 0.35rem 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.92rem; margin: 0.75rem 0; }
+    th, td { text-align: left; padding: 0.45rem 0.55rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { color: var(--text); font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; }
+    code { font-family: ui-monospace, Consolas, monospace; font-size: 0.88em; }
+    @media print { html { background: #fff; color: #111; } p, li, .lede { color: #222; } .card { break-inside: avoid; } a { color: #134e9b; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <p class="meta">Imaging bench · current as of 5 November 2026</p>
+    <h1>Imaging a laptop</h1>
+    <p class="lede">One form on the laptop. Enter the ticket, confirm the person and the software, press Start, and leave it on the imaging cable. The map of how that works is the <a href="imaging-topology.html">imaging topology</a>.</p>
+
+    <div class="card ok">
+      <p>Use this when the laptop is on the imaging network and you can choose network boot. Windows 11 is the path to hand to an employee. Ubuntu 26.04 is built for the next test. No laptop has finished that Ubuntu image yet, so do not hand an Ubuntu laptop out from this bench.</p>
+    </div>
+
+    <h2>Before you start</h2>
+    <ul>
+      <li>The laptop is plugged into the imaging network. Power stays on. The cable stays in until Windows has finished installing apps.</li>
+      <li>You have a NextDesk ticket number, or the employee’s first and last name. A laptop with no person yet can use Blank, core apps.</li>
+      <li>You can make the laptop network-boot. A normal restart from the disk does not open the form.</li>
+    </ul>
+
+    <h2>Steps</h2>
+    <ol class="steps">
+      <li><strong>Network-boot the laptop.</strong> Choose the UEFI IPv4 network boot. The Nextlink Imaging form should appear. It is a dark screen with two cards, not a blue text menu and not the Ubuntu desktop.</li>
+      <li><strong>Look the person up.</strong> Type the ticket number, or the first name, a space, and the last name. Press Look up. A ticket fills that ticket. A name lists that person’s open tickets. One match fills itself. More than one match waits for you to pick the ticket for this laptop.</li>
+      <li><strong>Read the department and the note.</strong> The department name comes from the ticket. The note says whether the checks came from the employee’s previous laptop, from the department list, or from the core list because that department has no software pack.</li>
+      <li><strong>Leave Windows 11 selected</strong> unless this laptop is an Ubuntu test. You can switch the operating system. Each side keeps its own checks.</li>
+      <li><strong>Check the software.</strong> Search the list. Scroll it. UniFi VPN, Wazuh, Atera, and NextDesk endpoint stay checked. Uncheck anything this person should not get. The previous laptop’s installed software is the list that gets checked when NextDesk has that list. With no previous laptop, the department list is checked.</li>
+      <li><strong>Press Start.</strong> The screen says it saved the choice and is restarting into the imaging network. Leave the laptop alone. For a laptop with no person and no ticket, press Blank, core apps instead. That installs Chrome, Firefox, KeePass, and Earth, and skips the department list. Atera, Wazuh, and UniFi Endpoint still install.</li>
+      <li><strong>The wait screen takes over.</strong> It is full screen. Under “Preparing this PC” it says who the laptop is for, from the choice you just saved. Leave it on the cable. The laptop saves the checked software while that cable still works, then joins Wi-Fi. Near the end it installs the checked apps, then Atera, Wazuh, and the UniFi Endpoint agent. It does not install the opsi client agent. The screen stays up until the laptop reboots to the work sign-in.</li>
+      <li><strong>The sign-in screen says Welcome and the employee’s name.</strong> The first sign-in that is not NextAdmin clears that line and leaves the normal lock screen. Start stays closed. File Explorer does not open by itself. The pinned row is the installed browsers, File Explorer, and UniFi Endpoint. The person can pin more.</li>
+    </ol>
+
+    <h2>What a restart does</h2>
+    <p>Start saves the choice on the imaging host for that laptop’s network address. The file is not on the public boot port. The reboot right after Start is sent to the network once. That boot sees the saved choice, skips the form, and starts the installer for the operating system you picked.</p>
+    <p>A later restart from the hard disk continues the install already under way. It does not return to the form. The saved choice lasts 30 minutes. After that, a network boot shows the form again, so the same laptop can be imaged for someone else. A network boot during those 30 minutes starts the saved install over.</p>
+
+    <div class="card warn">
+      <p><strong>To show the form again,</strong> delete that laptop’s saved choice on the imaging host, then network-boot. The file is <code>/var/lib/imaging-kiosk/decisions/</code> plus the MAC address with the colons removed, ending in <code>.json</code>. After it is gone, the next network boot opens the empty form.</p>
+    </div>
+
+    <h2>What Windows installs</h2>
+    <table>
+      <thead>
+        <tr><th>Checked on the form</th><th>What the image does</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Catalog apps such as Chrome, Firefox, KeePass, Earth, PuTTY, WinSCP, Wireshark, WinBox, MobaXterm, The Dude</td><td>Installed during imaging when the laptop can still reach the imaging host. Chrome, The Dude, WinBox, and MobaXterm use a direct installer. The others use winget.</td></tr>
+        <tr><td>Atera, Wazuh</td><td>Installed on every Windows image by their own scripts, whether or not the row is checked.</td></tr>
+        <tr><td>UniFi Endpoint</td><td>Installed on every Windows image by its own script. This is the endpoint agent, not a separate VPN client.</td></tr>
+        <tr><td>UniFi VPN, NextDesk endpoint</td><td>The rows stay checked. There is no installer for them yet, so the image does not add those two packages.</td></tr>
+        <tr><td>Microsoft 365</td><td>Not in the list. Office is not installed by this image.</td></tr>
+      </tbody>
+    </table>
+    <p>The checked list is saved before Wi-Fi starts, while the imaging cable still has an address on <code>192.168.26</code>. If that save fails, the image installs Chrome, Firefox, KeePass, and Earth Pro and continues. Leave the imaging cable connected until the apps are done.</p>
+    <p>If one checked app fails, the installer tries the set once more. It does not mark the apps finished until that pass succeeds, so a later boot tries again.</p>
+
+    <h2>When something looks wrong</h2>
+    <table>
+      <thead>
+        <tr><th>What you see</th><th>What to do</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>The old operating system, or Windows setup, with no form</td><td>Network-boot. A disk restart does not open the form.</td></tr>
+        <tr><td>The form never appears and Windows setup starts immediately</td><td>A choice is already saved for this laptop. Delete it, then network-boot.</td></tr>
+        <tr><td>Look up stays on Searching, or the note clears</td><td>The imaging host could not read NextDesk. You can still type the ticket number, pick the department, check the software, and press Start. The checks will not be filled from the ticket until lookup works.</td></tr>
+        <tr><td>The department name is right, and the note says there is no software pack</td><td>NextDesk has the department. The imaging catalog has no pack under that name, so the core apps are checked. Change the checks before Start if this person needs more.</td></tr>
+        <tr><td>A blue text menu</td><td>The form failed to start. That menu is only the fallback. Network-boot once more. If it stays on the blue menu, stop and report it.</td></tr>
+        <tr><td>Ubuntu is selected and the language screen appears</td><td>The Ubuntu installer is not finished. Switch the form back to Windows 11 for a laptop that has to be handed out.</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Ubuntu test</h2>
+    <p>Pick Ubuntu 26.04 on the form and press Start. The installer uses the seed on the imaging host. It does not ask for a language. The first boot encrypts <code>/home</code>, creates hidden NextAdmin, and turns on Entra sign-in. The dock sits on the bottom with Chrome, Teams, and Outlook pinned. Checked software installs as the Linux program named on the form: The Dude as Zenmap, MobaXterm as Remmina, WinSCP as FileZilla.</p>
+    <p>Start also stores one recovery phrase for that laptop’s MAC on the imaging host and emails a NextPass link to the imaging owner. Imaging that same laptop again deletes the old phrase and emails a new one. The laptop removes its own copy after the disk key is set. Windows does not get a recovery phrase.</p>
+    <p>The Ubuntu image denies new inbound connections, masks SSH, and turns off Avahi, rpcbind, and Windows discovery. Sleep, hibernate, and hybrid sleep are masked. OneDrive still needs the employee to approve it once. No laptop has finished this image.</p>
+
+    <h2>Not done yet</h2>
+    <ul>
+      <li>No laptop has finished this build. Zachariah Miller’s laptop, NL-J0DTRV3, still has only Chrome, Firefox, KeePass, and Earth until it is imaged again.</li>
+      <li>UniFi VPN and the NextDesk endpoint stay checked and have no installer.</li>
+      <li>A new hire is still added to the join group by hand for the day of the first Entra sign-in.</li>
+      <li>The USB sticks are the old seed. Windows imaging stays on the network. Do not put the NextAdmin password, the Atera link, or the Wazuh password on a stick.</li>
+      <li>A dock does not set the BIOS. The laptop still has to network-boot once.</li>
+    </ul>
+
+    <p>Update this page in the same change that changes the bench steps. The 2 November plan map is <a href="imaging-topology-plan-2026-11-02.html">imaging-topology-plan-2026-11-02.html</a>.</p>
+  </main>
+</body>
+</html>

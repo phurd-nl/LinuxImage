@@ -129,6 +129,10 @@ if [ "$PHASE" = "needs_purge" ]; then
   write_progress "purge" "Removing old plaintext /home copy…" 92
   WIZARD_AUTO=1 bash "$here/04-purge-shadowed-plaintext-home.sh"
   date -Iseconds > "$STATE_DIR/purge_done"
+  write_progress "timeshift" "Scheduling Timeshift on the encrypted home filesystem…" 96
+  if ! WIZARD_AUTO=1 bash "$here/setup-timeshift.sh" --bind; then
+    say "WARNING: Timeshift setup failed — encryption is still complete"
+  fi
   write_progress "done" "Setup complete" 100
   date -Iseconds > "$STATE_DIR/completed_at"
   say "━━━ FIRST-BOOT SETUP COMPLETE ━━━"

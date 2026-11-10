@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Imaging topology</title>
+  <style>
+    :root {
+      --background: #0b1020;
+      --surface: #141b2d;
+      --text: #e8eef9;
+      --muted: #c5d0e4;
+      --border: #31415f;
+      --accent: #93c5fd;
+      --ok: #14532d;
+      --later: #78350f;
+      --stop: #334155;
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--background); color: var(--text); font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; line-height: 1.5; }
+    body { margin: 0; }
+    a { color: var(--accent); }
+    .page { margin: 0 auto; max-width: 76rem; padding: 1.5rem 1.25rem 4rem; }
+    h1 { font-size: clamp(1.8rem, 4vw, 2.6rem); letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 0.5rem; }
+    h2 { font-size: 1.15rem; margin: 0 0 0.7rem; }
+    p, li { color: var(--muted); }
+    .meta { color: var(--accent); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+    .flow { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: stretch; margin: 0 0 1.2rem; }
+    .box { width: 13.5rem; background: var(--surface); border: 1px solid var(--border); border-radius: 0.75rem; padding: 0.65rem 0.75rem; }
+    .box strong { display: block; margin: 0.2rem 0; }
+    .box span, .box small { display: block; color: var(--muted); font-size: 0.82rem; }
+    .tag { display: inline-block; border-radius: 999px; padding: 0.05rem 0.45rem; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; background: var(--ok); color: #dcfce7; }
+    .tag.later { background: var(--later); color: #fde68a; }
+    .tag.boot { background: #1e3a8a; color: #dbeafe; }
+    .arrow { align-self: center; color: var(--accent); font-weight: 800; }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .col { border: 1px solid var(--border); border-radius: 0.85rem; padding: 0.9rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+    th, td { text-align: left; vertical-align: top; padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--border); }
+    th { font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; }
+    code { font-family: ui-monospace, Consolas, monospace; font-size: 0.88em; }
+    @media (max-width: 800px) { .split { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <p class="meta">Current path · 5 November 2026</p>
+    <h1>Imaging topology</h1>
+    <p>How a laptop is imaged today. The bench steps are the <a href="imaging-sop.html">imaging SOP</a>. The 2 November plan map is kept at <a href="imaging-topology-plan-2026-11-02.html">imaging-topology-plan-2026-11-02.html</a>. Update this page when the path changes.</p>
+
+    <h2>1. Network boot</h2>
+    <div class="flow">
+      <div class="box"><span class="tag boot">Running</span><strong>Laptop</strong><small>UEFI network boot on the imaging VLAN. Power and the cable stay connected.</small></div>
+      <span class="arrow">→</span>
+      <div class="box"><span class="tag boot">Running</span><strong>DHCP</strong><small>Offers <code>snponly.efi</code> from <code>192.168.26.106</code>. DHCP is not on the opsi host.</small></div>
+      <span class="arrow">→</span>
+      <div class="box"><span class="tag boot">Running</span><strong>TFTP :69</strong><small><code>default.ipxe</code> and <code>autoexec.ipxe</code> chain to the kiosk. They retry if that chain fails.</small></div>
+      <span class="arrow">→</span>
+      <div class="box"><span class="tag boot">Running</span><strong>boot.ipxe :8091</strong><small>The imaging host looks up the laptop MAC. No saved choice loads the form. A saved choice skips the form.</small></div>
+    </div>
+
+    <h2>2. The form, or the saved choice</h2>
+    <div class="flow">
+      <div class="box"><span class="tag">Running</span><strong>Kiosk</strong><small>Small Linux image. A framebuffer form, not a browser and not the Ubuntu desktop. Kernel is the signed Ubuntu casper <code>vmlinuz</code>.</small></div>
+      <span class="arrow">→</span>
+      <div class="box"><span class="tag">Running</span><strong>Look up</strong><small>The imaging host calls NextDesk. It tries <code>infara-scale.nxlink.com</code>, then <code>nextdesk.nxlink.com</code>. The public desk answers. The tech does not pick UAT or Prod.</small></div>
+      <span class="arrow">→</span>
+      <div class="box"><span class="tag">Running</span><strong>Choice file</strong><small><code>/var/lib/imaging-kiosk/decisions/&lt;mac&gt;.json</code>. Ticket, person, department, operating system, and checked apps. Expires after 30 minutes. Not served on port 8090.</small></div>
+      <span class="arrow">→</span>
+      <div class="box"><span class="tag">Running</span><strong>One network boot</strong><small>Start sets EFI BootNext to the network entry and reboots. That one boot reads the choice file.</small></div>
+    </div>
+    <p>The checks follow one rule. A previous laptop with a software list in NextDesk wins. With no list on that laptop, the department pack is checked. With no pack for that department name, the core apps are checked. The form says which rule it used.</p>
+    <p>A blue iPXE menu is only the fallback when the kiosk does not start. A normal boot does not sit on it.</p>
+
+    <h2>3. Install</h2>
+    <div class="split">
+      <section class="col">
+        <h2>Windows 11 · this path finishes</h2>
+        <div class="flow">
+          <div class="box"><span class="tag">Running</span><strong>windows.ipxe</strong><small>Unchanged auto-enroll script on TFTP. The choice file is not passed on this script.</small></div>
+          <span class="arrow">→</span>
+          <div class="box"><span class="tag">Running</span><strong>Auto-enroll :8080</strong><small>Creates the opsi client from the serial and arms <code>win11-x64</code> plus the lab products.</small></div>
+          <span class="arrow">→</span>
+          <div class="box"><span class="tag">Running</span><strong>opsiconfd 4.3.59.4</strong><small>TCP 4447. Depot product <code>win11-x64</code>. WinPE runs unattended setup.</small></div>
+          <span class="arrow">→</span>
+          <div class="box"><span class="tag">Running</span><strong>Wait screen</strong><small>Full screen on first boot. Names the person, saves the checked apps before Wi-Fi, skips the opsi agent, then installs Atera, Wazuh, UniFi Endpoint, and the checked apps. The sign-in screen says Welcome and the name until the first real sign-in.</small></div>
+        </div>
+      </section>
+      <section class="col">
+        <h2>Ubuntu 26.04 · built, not proven</h2>
+        <div class="flow">
+          <div class="box"><span class="tag later">Next image</span><strong>Desktop ISO</strong><small><code>ubuntu-26.04.1</code> from port 8090, with the NoCloud seed. No paid Linux client agent.</small></div>
+          <span class="arrow">→</span>
+          <div class="box"><span class="tag later">Next image</span><strong>Late install</strong><small>Saves the checked apps and the recovery phrase while the cable works. Firewall denies inbound. SSH, Avahi, rpcbind, and wsdd are off. Entra uses the public UbuntuOauth client.</small></div>
+          <span class="arrow">→</span>
+          <div class="box"><span class="tag later">Next image</span><strong>First boot</strong><small>Encrypts <code>/home</code>. Hidden NextAdmin. Welcome plus the employee name. Dock, Teams, Outlook, OneDrive, and the Linux stand-ins. No laptop has finished it.</small></div>
+        </div>
+      </section>
+    </div>
+
+    <h2>4. Windows apps, after the operating system is on disk</h2>
+    <p>These run from <code>postinst.d</code> while the imaging cable is still connected. <code>03b_fetch_kiosk_apps.cmd</code> saves the checked list before Wi-Fi. <code>70_core_apps.cmd</code> installs that saved list. A miss, or a laptop with no saved choice, installs Chrome, Firefox, KeePass, and Earth Pro.</p>
+    <table>
+      <thead>
+        <tr><th>Piece</th><th>Role</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>03b_fetch_kiosk_apps.cmd</code></td><td>Saves the checked software from the imaging host before Wi-Fi can move the laptop off that network.</td></tr>
+        <tr><td><code>04_wifi_specialize.cmd</code></td><td>Joins Nextlink_Corp. The passphrase is staged from a server secret, not from git.</td></tr>
+        <tr><td><code>50_opsi-client-agent.cmd</code></td><td>Does nothing. The product copy cannot put the agent installer back under this name.</td></tr>
+        <tr><td><code>60_atera.cmd</code></td><td>Atera agent on every image.</td></tr>
+        <tr><td><code>61_wazuh.cmd</code></td><td>Wazuh agent on every image.</td></tr>
+        <tr><td><code>62_unifi_endpoint.cmd</code></td><td>UniFi Endpoint MSI on every image. This is not the UniFi VPN row.</td></tr>
+        <tr><td><code>70_core_apps.cmd</code></td><td>Checked catalog apps. Uses the list saved by 03b. One extra pass if a selected app fails. The done marker is written only when that pass exits clean.</td></tr>
+        <tr><td><code>71</code> and <code>75</code></td><td>OneDrive preferences and the start menu, after the apps.</td></tr>
+        <tr><td><code>97_hide_nextadmin.cmd</code></td><td>Hides the local NextAdmin account.</td></tr>
+        <tr><td><code>99_handoff.cmd</code></td><td>Clears autologon, sets Welcome plus the employee name, and reboots to the work sign-in. The first non-NextAdmin sign-in clears that line.</td></tr>
+      </tbody>
+    </table>
+    <p>Department apps are not installed by a login task. That path, <code>lab-provision</code>, is disabled. WiFiman, when checked, is scheduled for the employee’s next sign-in because it does not install as the machine account. WSL turns the feature on now and finishes the distro after a reboot.</p>
+
+    <h2>5. Where it lives</h2>
+    <table>
+      <thead>
+        <tr><th>What</th><th>Where</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Imaging host</td><td><code>192.168.26.106</code>. Form and choice API on port 8091, bound to that address (<code>imaging-kiosk.service</code>, <code>/opt/imaging-kiosk</code>). Boot files on port 8090, also bound to that address. Ports 8090 and 8091 do not listen on every interface.</td></tr>
+        <tr><td>Choices</td><td><code>/var/lib/imaging-kiosk/decisions</code>. One JSON file per MAC, colons removed. It expires 30 minutes after Start. Delete it to show the form sooner. <code>http://192.168.26.106:8090/decisions/</code> returns 404.</td></tr>
+        <tr><td>Private files</td><td><code>/opt/imaging-private</code>, root-only, outside the boot port. NextPass token, Atera link, Wazuh password, UniFi package, and NextAdmin password. Ubuntu recovery phrases go in <code>recovery/&lt;mac&gt;.pass</code>.</td></tr>
+        <tr><td>Catalog</td><td><code>/opt/lab-console/data/catalog</code>. The form and <code>/api/install.json</code> both read it.</td></tr>
+        <tr><td>Windows product</td><td><code>win11-x64</code> on the opsi depot, opsiconfd 4.3.59.4, container <code>opsi-server_opsi-server_1</code>.</td></tr>
+        <tr><td>NextDesk read</td><td>App role ImagingRead. The live desk that accepts it is <code>https://nextdesk.nxlink.com</code>. <code>https://infara-scale.nxlink.com</code> still refuses that token.</td></tr>
+        <tr><td>Source</td><td>Windows scripts are in <code>postinst/</code> in this repo. <code>active/</code> still runs. <code>retired/</code> is kept. The kiosk source is <code>fog/opsi/imaging-kiosk</code>.</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Ubuntu recovery and lockdown</h2>
+    <p>An Ubuntu Start writes one recovery phrase per MAC and emails a NextPass link to the imaging owner. The link expires after 90 days or 5 views. The host file remains until a vault exists. Imaging that MAC again deletes the old phrase and emails a new one. The laptop copies the phrase while the imaging cable works and deletes its copy after the disk key is set.</p>
+    <p>The same install denies new inbound connections and allows outbound. SSH, Avahi, rpcbind, and Windows discovery are off. Name resolution, time sync, and printing stay installed, and inbound traffic to them is dropped. Automatic security updates are on. Hibernate, hybrid sleep, and ordinary suspend are masked.</p>
+
+    <h2>Open</h2>
+    <ul>
+      <li>No laptop has finished this build. NL-J0DTRV3 still has only the core apps until it is imaged again.</li>
+      <li>The Entra password is supposed to replace the Ubuntu install password on <code>/home</code> at the first online sign-in. That hook has not run on a laptop.</li>
+      <li>UniFi VPN and the NextDesk endpoint are locked on the form and have no package.</li>
+      <li>The opsi client agent is not armed. Identity, software inventory, and bookmark backup were agent products, so they do not run. Wi-Fi join still does.</li>
+      <li>The USB sticks are the old seed. A dock does not set the BIOS. The new-hire group is still added by hand.</li>
+    </ul>
+  </main>
+</body>
+</html>

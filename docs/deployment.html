@@ -1,0 +1,1099 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>OPSI imaging plan — Windows and Ubuntu, one sign-in</title>
+  <style>
+    :root {
+      --background: #0b1020;
+      --surface: #141b2d;
+      --surface-muted: #1c253b;
+      --text: #e8eef9;
+      --muted: #c5d0e4;
+      --border: #31415f;
+      --accent: #93c5fd;
+      --accent-soft: #1e3a5f;
+      --positive: #bbf7d0;
+      --positive-soft: #14532d;
+      --warning: #fde68a;
+      --warning-soft: #78350f;
+      --negative: #fecaca;
+      --negative-soft: #7f1d1d;
+      --radius: 0.75rem;
+      --shadow: 0 0.6rem 1.6rem rgb(0 0 0 / 35%);
+    }
+    * { box-sizing: border-box; }
+    html {
+      background: var(--background);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+    body { margin: 0; }
+    a { color: var(--accent); text-underline-offset: 0.18em; }
+    a:focus-visible { outline: 0.2rem solid var(--accent); outline-offset: 0.2rem; }
+    .skip-link {
+      background: #ffffff;
+      color: #0b1020;
+      left: 1rem;
+      padding: 0.75rem 1rem;
+      position: fixed;
+      top: 1rem;
+      transform: translateY(-200%);
+      z-index: 10;
+    }
+    .skip-link:focus { transform: translateY(0); }
+    .page { margin: 0 auto; max-width: 76rem; padding: 2rem; }
+    .page-header, .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    .page-header {
+      border-top: 0.35rem solid var(--accent);
+      padding: clamp(1.5rem, 4vw, 3rem);
+    }
+    .eyebrow {
+      color: var(--accent);
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      margin: 0 0 0.5rem;
+      text-transform: uppercase;
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 {
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      letter-spacing: -0.035em;
+      line-height: 1.05;
+      margin-bottom: 1rem;
+    }
+    h2 { font-size: 1.35rem; line-height: 1.25; }
+    h3 { font-size: 1.05rem; }
+    .lede { color: var(--muted); font-size: 1.1rem; max-width: 74ch; }
+    .metadata { display: flex; flex-wrap: wrap; gap: 0.75rem 2rem; margin: 1.5rem 0 0; }
+    .metadata div { min-width: 10rem; }
+    .metadata dt {
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .metadata dd { font-weight: 600; margin: 0.15rem 0 0; }
+    .toc { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; margin: 1.25rem 0 0; padding: 0; list-style: none; }
+    .toc a { font-weight: 600; }
+    main { display: grid; gap: 1.25rem; margin-top: 1.25rem; }
+    .panel { padding: clamp(1.25rem, 3vw, 2rem); }
+    .summary { background: var(--accent-soft); border-color: #3b5f8a; box-shadow: none; }
+    .flow {
+      display: grid;
+      gap: 0.75rem;
+      grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+      margin: 1rem 0 0;
+      padding: 0;
+      list-style: none;
+    }
+    .flow li {
+      background: var(--surface-muted);
+      border: 1px solid var(--border);
+      border-radius: 0.6rem;
+      padding: 0.85rem 0.9rem;
+    }
+    .flow strong { display: block; margin-bottom: 0.2rem; }
+    .flow span { color: var(--muted); font-size: 0.9rem; }
+    .table-region { overflow-x: auto; }
+    table { border-collapse: collapse; min-width: 42rem; width: 100%; }
+    caption { color: var(--muted); font-size: 0.9rem; padding-bottom: 0.75rem; text-align: left; }
+    th, td { border-bottom: 1px solid var(--border); padding: 0.8rem 0.7rem; text-align: left; vertical-align: top; }
+    thead th { background: var(--surface-muted); font-size: 0.82rem; }
+    tbody th { font-weight: 650; }
+    .status {
+      border-radius: 999px;
+      display: inline-block;
+      font-size: 0.78rem;
+      font-weight: 700;
+      padding: 0.2rem 0.6rem;
+    }
+    .status-positive { background: var(--positive-soft); color: var(--positive); }
+    .status-warning { background: var(--warning-soft); color: var(--warning); }
+    .status-negative { background: var(--negative-soft); color: var(--negative); }
+    ol.steps { margin: 0; padding-left: 1.25rem; }
+    ol.steps > li { margin: 0 0 1.15rem; }
+    ol.steps > li:last-child { margin-bottom: 0; }
+    pre {
+      background: #0b1020;
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      overflow-x: auto;
+      padding: 0.9rem 1rem;
+    }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }
+    .note { color: var(--muted); }
+    footer { color: var(--muted); font-size: 0.85rem; padding: 1.5rem 0 0.5rem; }
+    @media (max-width: 40rem) {
+      .page { padding: 0.75rem; }
+      .page-header, .panel { border-radius: 0.5rem; }
+    }
+    @media print {
+      @page { margin: 0.6in; }
+      html, body { background: #ffffff; color: #0f172a; }
+      .skip-link { display: none; }
+      .page { max-width: none; padding: 0; }
+      .page-header, .panel, .flow li, pre, thead th {
+        background: #ffffff;
+        color: #0f172a;
+        border-color: #94a3b8;
+        box-shadow: none;
+      }
+      .page-header, .panel { break-inside: avoid; }
+      .lede, .note, .flow span, caption, .metadata dt, footer { color: #334155; }
+      .table-region { overflow: visible; }
+      table { min-width: 0; }
+      thead { display: table-header-group; }
+      a, .eyebrow { color: #1d4ed8; }
+      .status-positive, .status-warning, .status-negative { color: #0f172a; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="page">
+    <header class="page-header">
+      <p class="eyebrow">OPSI imaging plan</p>
+      <h1>One sign-in. Then the laptop installs itself.</h1>
+      <p class="lede">
+        The live bench path as of 4 November 2026 is the
+        <a href="imaging-sop.html">imaging SOP</a> and the
+        <a href="imaging-topology.html">current topology</a>.
+        This page is the earlier plan. The 2 November map is
+        <a href="imaging-topology-plan-2026-11-02.html">kept beside it</a>.
+      </p>
+      <p class="lede">
+        This is the plan for the opsi host. A tech signs in to Microsoft
+        once, chooses Windows 11 or Ubuntu 26.04, assigns the laptop, checks
+        the software, and presses Deploy. After that the imaging process does
+        not ask the tech another question. This screen is not built yet. The
+        laptop does not stop on it today. Before any change to the opsi VM,
+        Proxmox takes a snapshot of it. The first change after that snapshot
+        is opsiconfd, from 4.3.53.10 to 4.3.59.4. A read-only check on
+        2 November 2026 is in <a href="#boot">the boot screen</a> and
+        <a href="#review">the review</a>. The Ubuntu encryption seed is built,
+        The seed builder now hashes the install password. A laptop still
+        waits on <code>source.id</code> matching the ISO.
+      </p>
+      <dl class="metadata">
+        <div>
+          <dt>Updated</dt>
+          <dd>3 November 2026</dd>
+        </div>
+        <div>
+          <dt>PXE address</dt>
+          <dd>192.168.26.106</dd>
+        </div>
+        <div>
+          <dt>Plan</dt>
+          <dd>Brain plan #993</dd>
+        </div>
+        <div>
+          <dt>Full loop</dt>
+          <dd>About 3 to 4 weeks</dd>
+        </div>
+      </dl>
+      <ul class="toc">
+        <li><a href="#session">The tech session</a></li>
+        <li><a href="#boot">The boot screen</a></li>
+        <li><a href="#deploy">What Deploy does</a></li>
+        <li><a href="#ubuntu">Ubuntu image</a></li>
+        <li><a href="#bios">BIOS</a></li>
+        <li><a href="#windows">Windows image</a></li>
+        <li><a href="#entra">Two Entra apps</a></li>
+        <li><a href="#sudo">Sudo</a></li>
+        <li><a href="#apps">Apps and the dock</a></li>
+        <li><a href="#server">Snapshot and server</a></li>
+        <li><a href="#build">Build order</a></li>
+        <li><a href="#have">Already built</a></li>
+        <li><a href="#first">First try</a></li>
+        <li><a href="#review">Review</a></li>
+      </ul>
+    </header>
+
+    <main id="main">
+      <section class="panel summary" aria-labelledby="session">
+        <h2 id="session">The tech signs in once</h2>
+        <p>
+          The only action in front of the tech is <strong>Sign in to image</strong>.
+          That boots a small Linux console from the depot. Windows or Ubuntu
+          is not installed yet. The console keeps the Microsoft token for the
+          whole session. There is no second sign-in before Deploy.
+          The laptop does not show this screen today. What it boots now is
+          in <a href="#boot">the boot screen</a>.
+        </p>
+        <ol class="flow">
+          <li><strong>1. Sign in</strong><span>Entra device code and MFA, once.</span></li>
+          <li><strong>2. Access</strong><span>Groups unlock the buttons. Nothing else asks for a password.</span></li>
+          <li><strong>3. Choose OS</strong><span>Windows 11 or Ubuntu 26.04.</span></li>
+          <li><strong>4. Ticket</strong><span>A NextDesk ticket number is required. UAT or Prod on Infara Scale.</span></li>
+          <li><strong>5. Person</strong><span>The ticket supplies the employee and department. The employee does not sign in here.</span></li>
+          <li><strong>6. Software</strong><span>That department’s list, plus UniFi VPN on every laptop. The NextDesk endpoint stays off.</span></li>
+          <li><strong>7. Deploy</strong><span>Refused until the ticket resolves. Then it writes the choice and starts the installer.</span></li>
+        </ol>
+        <div class="table-region" tabindex="0" aria-label="What each Entra group unlocks">
+          <table>
+            <caption>One token. Group membership decides which controls are enabled.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Group</th>
+                <th scope="col">Unlocked</th>
+                <th scope="col">Still closed</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Imaging</th>
+                <td>Install Windows 11. Install Ubuntu 26.04. Enter a ticket number.</td>
+                <td>Deploy, until that ticket resolves on Infara Scale.</td>
+              </tr>
+              <tr>
+                <th scope="row">Imaging plus assignment</th>
+                <td>Everything above. The ticket fills the person, the department, and the software list.</td>
+                <td>Nothing on this screen. A tech in neither group sees a refusal.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="boot">
+        <h2 id="boot">The boot screen</h2>
+        <p>
+          A laptop on the imaging VLAN does not load GRUB. DHCP on that VLAN
+          hands out <code>snponly.efi</code>, the FOG iPXE file. That choice
+          is already made, and it is not stored on this host. It was made so
+          a Lenovo L15 Gen 3, and other picky UEFI firmware, can PXE-boot.
+          iPXE runs <code>default.ipxe</code>, which now shows a menu and
+          waits until someone chooses. Nothing starts on its own.
+          Windows chainloads <code>windows.ipxe</code>, the previous
+          auto-enroll script, unchanged. Ubuntu starts only when someone
+          presses U. Secure Boot is usually fine with this boot file.
+        </p>
+        <p>
+          The graphical menu is on the depot and nothing loads it.
+          <code>grub.x64.efi</code> draws gfxterm at 1280×720. The theme and
+          the background picture are packed inside that EFI file. The shared
+          <code>grub.cfg</code> waits 3 seconds. The first entry is the local
+          disk when an operating system is already installed. The other entry
+          starts the opsi boot image with no client and no product, so it is
+          not the Windows installer the VLAN uses now.
+          <code>grub-shim.x64.efi</code> is the Secure Boot copy of that
+          loader. <code>opsipxeconfd</code> also writes one file per armed
+          MAC. Those files wait 0 seconds and contain a single Windows entry.
+          A laptop that has one would skip the picture and start Windows.
+        </p>
+        <h3>How a choice gets on screen</h3>
+        <p>
+          The menu is GRUB, in two configs, drawn in
+          <a href="imaging-topology.html">the imaging topology</a>.
+          DHCP stays on <code>snponly.efi</code> so a picky UEFI machine can
+          still start the network boot. <code>default.ipxe</code> does not
+          ask. Its only job is to chainload <code>grub.x64.efi</code>.
+        </p>
+        <p>
+          <code>grub.cfg</code> is the graphical menu. It tries the font and
+          gfxterm at 1280×720, then 1024×768, then auto. The theme and the
+          background stay inside the EFI file. The menu waits for a key.
+          The same file loads <code>grub-simple.cfg</code> when the font
+          will not load or gfxterm refuses to start. Esc loads that simple
+          menu too, including when the panel stays black and gfxterm still
+          reported success. Keyboard input stays on the console the whole time.
+        </p>
+        <p>
+          <code>grub-simple.cfg</code> is the other menu. Text only. No
+          theme, no picture, no timeout, and no local-disk default. The
+          choices match the graphical menu, so a tech learns one list.
+        </p>
+        <ul>
+          <li>Sign in to image. Later this boots the Entra console. Until that console exists, the row can stay off the menu.</li>
+          <li>Install Windows 11. This chainloads a second iPXE file whose script is only the current auto-enroll URL. It must not return to <code>default.ipxe</code>, or the laptop loads GRUB again.</li>
+          <li>Install Ubuntu 26.04. Visible, and it returns to the same menu until gate 2. A timeout must not select it.</li>
+          <li>Boot the disk already in this laptop. GRUB chainloads the local EFI file. Nothing is enrolled.</li>
+          <li>Simple menu, on Esc. Opens <code>grub-simple.cfg</code>.</li>
+        </ul>
+        <p>
+          If <code>grub.x64.efi</code> itself fails to start, the simple GRUB
+          menu never runs, because it is the same binary. <code>default.ipxe</code>
+          then shows the same choices as text. That last resort is only for
+          firmware that rejects the EFI, which is the Lenovo L15 case we
+          already hit. One L15 still has to prove the chainload before this
+          becomes the VLAN default.
+        </p>
+        <p>
+          A per-client file with timeout 0 must not be the file GRUB opens
+          first. Those files skip both menus and start Windows. The embedded
+          loader looks for a MAC file before <code>grub.cfg</code>.
+        </p>
+        <div class="table-region" tabindex="0" aria-label="Boot screen obstacles">
+          <table>
+            <caption>What blocks the GRUB screen on the depot that is running now. Checked 2 November 2026. Nothing on the host was changed.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Obstacle</th>
+                <th scope="col">What it means</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">DHCP never loads GRUB</th>
+                <td>The boot file is <code>snponly.efi</code>. This host does not serve DHCP, so the change is on the imaging VLAN’s DHCP server. Switching the VLAN to GRUB before one L15 succeeds can take PXE away from the machines that need the FOG file.</td>
+              </tr>
+              <tr>
+                <th scope="row">iPXE has no theme</th>
+                <td><code>snponly.efi</code> runs a script. It cannot show the opsi background. A themed screen means the laptop has to load <code>grub.x64.efi</code> or the shim. Chainloading GRUB from iPXE is a test, not a known fix for the L15.</td>
+              </tr>
+              <tr>
+                <th scope="row">Armed clients skip the menu</th>
+                <td><code>opsipxeconfd</code> is running. Its per-MAC files use timeout 0 and one Windows entry. Auto-enroll sets <code>win11-x64</code> to setup, which is what makes those files appear. The choice screen has to stay in front of that write.</td>
+              </tr>
+              <tr>
+                <th scope="row">Stock GRUB is not our Windows path</th>
+                <td>The generic netboot entry does not create <code>NL-&lt;serial&gt;</code> and does not arm products. Pointing DHCP at GRUB and leaving <code>grub.cfg</code> as it is would drop the installer that works.</td>
+              </tr>
+              <tr>
+                <th scope="row">An installed disk wins in 3 seconds</th>
+                <td>Entry 0 is the local EFI file when one exists. A reimage would boot the old system, or the generic netboot entry, before a tech can choose.</td>
+              </tr>
+              <tr>
+                <th scope="row">Ubuntu still has nowhere to boot from</th>
+                <td>The 26.04.1 desktop ISO, kernel, initrd, and NoCloud seed are served on <code>192.168.26.106:8090</code>. The PXE menu offers Ubuntu. A spare laptop has not installed from it yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="deploy">
+        <h2 id="deploy">What happens after Deploy</h2>
+        <p>
+          Deploy writes one selection file on the depot, named by the laptop’s
+          MAC address. Then it chainloads the installer. The tech can leave.
+          The file holds the operating system, the employee’s account name,
+          the software to install during imaging, and the software queued
+          for after that person signs in. Both installers read that same
+          file. The list comes from the NextDesk ticket: the employee on
+          the ticket, that person’s department, and the department software
+          already on the depot. UniFi VPN is on every laptop. The NextDesk
+          endpoint package is present in the plan and stays turned off.
+          Deploy does not run without a resolved ticket.
+        </p>
+        <ol class="steps">
+          <li>
+            <h3>Windows 11</h3>
+            <p>
+              The existing opsi <code>win11-x64</code> netboot product installs
+              Windows from the stock ISO already on the depot. The selection
+              file becomes the opsi product actions for that client, so the
+              checked applications install during the normal post-install.
+              No new Windows imaging engine, and no BitLocker step.
+            </p>
+          </li>
+          <li>
+            <h3>Ubuntu 26.04</h3>
+            <p>
+              After the boot screen is in front of the tech, the Ubuntu item
+              loads the current desktop ISO with the NoCloud seed served by
+              the depot:
+            </p>
+            <pre><code>autoinstall ds=nocloud;s=http://192.168.26.106:8090/nocloud/</code></pre>
+            <p>
+              This is our seed, not the stock opsi <code>ubuntu26-04</code>
+              product, and not the paid opsi Linux agent. The opsi host is
+              where the ISO and the seed live. One Ubuntu entry is on the
+              menu, and it is 26.04 LTS. A depot job replaces the ISO when
+              Ubuntu publishes a new 26.04 image and replaces the seed when
+              we rebuild it. The menu does not ask the tech to pick a version.
+              Security updates install from the Ubuntu archive during that
+              install. They do not become a new ISO. A USB holds the same
+              files and is used only when a laptop cannot reach the host.
+              The late-commands on disk today still read only
+              <code>/cdrom</code>. The seed change fetches from the host
+              first and uses the USB when that URL is missing.
+            </p>
+          </li>
+          <li>
+            <h3>No second tech prompt</h3>
+            <p>
+              Disk layout, packages, firewall, encryption, Timeshift, Entra
+              broker, hidden local admin, dock, and the checked apps are
+              applied by the installer and the first boot. The target wizard
+              does not ask the tech for a password. The scripts that exist
+              today still stop and ask. The recovery passphrase is generated
+              and stored with the selection record, not in the image.
+            </p>
+          </li>
+        </ol>
+        <p class="note">
+          The employee still signs in once, after imaging, with their own Entra
+          account. The tech’s token cannot become that person’s laptop login
+          or their OneDrive token. That sign-in is theirs. It is not part of
+          the imaging session.
+        </p>
+      </section>
+
+      <section class="panel" aria-labelledby="ubuntu">
+        <h2 id="ubuntu">Ubuntu image, applied automatically</h2>
+        <p>
+          The seed already knows the disk layout. Encryption still stops for
+          a password. The unattended finish, still to wire, reads the
+          selection file and applies the rest before anyone logs in. Secure
+          Boot has to be on before the encrypt step. opsi’s Secure Boot
+          netboot is a paid module, so a laptop may PXE with Secure Boot off
+          and need it turned on before that step.
+        </p>
+        <div class="table-region" tabindex="0" aria-label="Ubuntu disk layout">
+          <table>
+            <caption>Layout on a drive sold as 256 GB. Usable space is about 238 GB. The home figure is an estimate.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Region</th>
+                <th scope="col">Size</th>
+                <th scope="col">Protection</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">EFI</th>
+                <td>1 GB, FAT32</td>
+                <td>Boot only</td>
+              </tr>
+              <tr>
+                <th scope="row">Root</th>
+                <td>40 GB, ext4</td>
+                <td>Not encrypted. Holds Ubuntu, not the person’s files.</td>
+              </tr>
+              <tr>
+                <th scope="row">Home</th>
+                <td>About 197 GB</td>
+                <td>LUKS2. AES-XTS-512. Argon2id, 512 MiB, on the passphrase slots. 4 KB sectors.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Keys</h3>
+        <div class="table-region" tabindex="0" aria-label="LUKS key slots">
+          <table>
+            <caption>Target map. Daily login does not type a disk password. The TPM opens the volume. The scripts on disk still use the old map, described under the review.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Slot</th>
+                <th scope="col">Secret</th>
+                <th scope="col">Set when</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">0</th>
+                <td>The employee’s Entra password</td>
+                <td>Added on their first online password sign-in, using the key the TPM already holds. Empty until that sign-in. This slot is not the admin password.</td>
+              </tr>
+              <tr>
+                <th scope="row">1</th>
+                <td>Hidden local admin password</td>
+                <td>Generated once at imaging and kept. Opens the disk and the local account when Entra cannot be reached.</td>
+              </tr>
+              <tr>
+                <th scope="row">2</th>
+                <td>Recovery passphrase</td>
+                <td>Generated at imaging. Offline floor if the TPM is cleared. Stored with the job, outside the image and outside TFTP.</td>
+              </tr>
+              <tr>
+                <th scope="row">3</th>
+                <td>Random key sealed to PCR 7</td>
+                <td>Used at every normal login. Logout closes the volume.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>First boot, with nobody at the keyboard</h3>
+        <ol class="steps">
+          <li>Apply the BIOS update in <a href="#bios">BIOS</a>, including its reboot, and record that it finished.</li>
+          <li>Create the home partition in the free space and format LUKS2.</li>
+          <li>Copy the install account’s home into the volume, add the recovery and admin slots, and seal the TPM key.</li>
+          <li>Reboot, confirm <code>/home</code> is <code>/dev/mapper/home_crypt</code>, reseal to PCR 7 only, and delete the plaintext copy.</li>
+          <li>Point Timeshift at the encrypted home. Keep two daily snapshots. The timer does nothing while the volume is locked.</li>
+          <li>Hide the local admin from the greeter and turn off the user list, so the screen asks for a name.</li>
+          <li>Install the Entra broker with device registration on, <code>allowed_users = ALL</code>, and an empty owner. The employee is in the new-hire group for one day, and their sign-in joins the device. Any account the app accepts can sign in after that. A client secret is not stored on the laptop.</li>
+        </ol>
+        <p class="note">
+          Full-disk TPM encryption is not the plan. It unlocks the whole disk
+          at boot and leaves it open at the lock screen, and it only auto-unlocks
+          when the OEM fused Intel Boot Guard or AMD Platform Secure Boot.
+          Encrypted home locks the person’s files at logout on every laptop we buy.
+          Suspend-to-RAM stays available. Hibernate, hybrid-sleep, and
+          suspend-then-hibernate stay masked: each one writes memory into swap,
+          and this swap is activated only after sign-in, from inside the
+          encrypted home, so the laptop could not wake. The script on disk
+          today masks <code>sleep.target</code> as well. The image change
+          unmasks <code>sleep.target</code> and <code>suspend.target</code>
+          and leaves those three disk modes masked. Lid close and idle use
+          suspend. While the laptop is suspended the disk key stays in RAM,
+          the same as a locked screen, until the battery dies.
+        </p>
+      </section>
+
+      <section class="panel" aria-labelledby="bios">
+        <h2 id="bios">BIOS, before the disk is sealed</h2>
+        <p>
+          Dell and Lenovo laptops get the current vendor BIOS during imaging,
+          on AC power, before the wizard seals the TPM. The first seal uses
+          PCRs 0, 2, 4, and 7. A BIOS flash changes PCR 0, so a flash after
+          that seal and before the PCR 7 reseal makes the TPM withhold the
+          key. After the reseal, a later BIOS update is safe. A UEFI dbx
+          update still moves PCR 7, so this step does not apply dbx updates.
+        </p>
+        <div class="table-region" tabindex="0" aria-label="BIOS update by OS">
+          <table>
+            <caption>One reboot applies the flash. A marker stops the step from running again. No package means the model is recorded and imaging continues.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Image</th>
+                <th scope="col">How the latest BIOS is chosen</th>
+                <th scope="col">When it runs</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Ubuntu</th>
+                <td>
+                  <code>fwupd</code> against the Linux Vendor Firmware Service.
+                  Dell Latitude, Precision, and XPS, and Lenovo ThinkPad,
+                  publish system firmware there. The step updates that system
+                  firmware device only.
+                </td>
+                <td>Installed system, before the encryption wizard. The capsule is applied on the reboot that follows.</td>
+              </tr>
+              <tr>
+                <th scope="row">Windows</th>
+                <td>
+                  Dell Command | Update for Dell. Lenovo ThinInstaller for
+                  Lenovo. Each tool uses the vendor catalog. The silent
+                  install must not reset BIOS settings or Secure Boot keys.
+                </td>
+                <td>First boot into Windows, before the handoff is marked done. Not inside WinPE.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <ul>
+          <li>The power adapter has to be connected. On battery the vendor tool refuses to flash. The step waits, then records a skip so imaging is not left half-flashed.</li>
+          <li>A failed flash stops the image before encryption or handoff. The tech sees the model and the log.</li>
+          <li>The imaging LAN can reach the Ubuntu archive. This step also needs <code>fwupd.org</code> for Ubuntu, and Dell’s and Lenovo’s catalog services for Windows. Those three were not checked on 29 October 2026.</li>
+          <li>A model with no capsule is logged and the image continues. Consumer Inspiron and IdeaPad lines are the usual gap. A depot copy of vendor capsules can cover those later.</li>
+        </ul>
+        <p class="note">
+          Prove it on one Dell and one Lenovo after the first encrypted
+          laptop, not during that first encryption. The flash is a reboot
+          and a firmware write. It stays out of gate 1.
+        </p>
+      </section>
+
+      <section class="panel" aria-labelledby="windows">
+        <h2 id="windows">Windows image</h2>
+        <p>
+          Windows stays on <code>win11-x64</code>. The product and
+          <code>setup.exe</code> are on the depot, about 8.6 GB. The new work
+          is the front door and the selection file, not a second Windows
+          installer. Checked rows that match opsi products are set to install
+          for that client before the boot image hands off. A laptop that opsi
+          has never inventoried has an empty checklist. The tech can still
+          pick the OS and deploy.
+        </p>
+        <p>
+          The PXE menu waits until someone chooses. Windows chainloads
+          <code>windows.ipxe</code>. That script calls
+          <code>http://192.168.26.106:8080/ipxe/auto.ipxe</code>,
+          creates a client named <code>NL-&lt;serial&gt;</code>, and arms
+          <code>win11-x64</code> setup. Specialize still creates
+          <code>NextAdmin</code>, joins <code>Nextlink_Corp</code>, and leaves
+          AutoLogon off. The employee joins Entra in work OOBE. First logon
+          runs debloat, Start pins, and Atera. The opsi client agent is not
+          installed. PXE and these image scripts do not use it. The
+          BIOS step in <a href="#bios">BIOS</a> runs in that same first boot,
+          on AC power, before the handoff is marked done. There is no
+          BitLocker step in this plan.
+        </p>
+      </section>
+
+      <section class="panel" aria-labelledby="entra">
+        <h2 id="entra">Two Entra apps, on purpose</h2>
+        <p>
+          The imaging console and the laptop login do not share a registration.
+          The laptop app already exists. The imaging app is still to register.
+        </p>
+        <div class="table-region" tabindex="0" aria-label="Entra applications">
+          <table>
+            <caption>UbuntuOauth is the laptop login. It is a public client. No client secret is stored in the image.</caption>
+            <thead>
+              <tr>
+                <th scope="col">App</th>
+                <th scope="col">Used by</th>
+                <th scope="col">State</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">UbuntuOauth</th>
+                <td>
+                  The finished laptop. Tenant
+                  <code>143673a5-ff46-4d23-8255-b4ef07861814</code>,
+                  client <code>699c85ff-50ac-4b83-bfbc-3cc270cd306c</code>.
+                  Redirect <code>https://login.microsoftonline.com/common/oauth2/nativeclient</code>.
+                  Delegated <code>User.Read</code> and <code>GroupMember.Read.All</code> are granted.
+                </td>
+                <td><span class="status status-positive">Registered</span> Broker config is still applied by hand until the seed passes these ids in.</td>
+              </tr>
+              <tr>
+                <th scope="row">Imaging console</th>
+                <td>The PXE session. Device-code login. Group check for imaging and for assignment.</td>
+                <td><span class="status status-negative">Not registered</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          At the finished greeter the person types <code>user@domain</code>.
+          Signing in by typing the Entra password makes that password the local
+          password too. A QR or passwordless login asks for a separate local
+          password, because Ubuntu never saw the Entra password. The image will
+          offer the Entra password path first. A change in Entra updates the
+          laptop the next time they type the new password online. <code>passwd</code>
+          on the laptop must not be how they change it.
+        </p>
+        <h3 id="new-hire">New hire, for one day</h3>
+        <p>
+          Entra device settings allow only the new-hire security group to
+          join a device. The group is not named <code>linux-</code> anything,
+          so authd does not turn it into a local group. When the laptop is
+          assigned, that employee is added to the group. Their sign-in is
+          what joins the device. Twenty-four hours after the add, the
+          membership ends. That does not unjoin the laptop and does not sign
+          them out. It stops them joining another device.
+        </p>
+        <p>
+          The end time is set on the group assignment. A daily job is the
+          fallback: remove anyone whose add time is older than a day. The
+          laptop script cannot change this group.
+        </p>
+        <h3 id="sudo">Sudo for an Entra account</h3>
+        <p>
+          An Entra sign-in does not get <code>sudo</code>.
+          <code>setup-entra-authd.sh</code> sets <code>allowed_users</code> to
+          <code>ALL</code> and <code>owner</code> to empty, so the imaging
+          login that registers the device does not lock everyone else out.
+          It does not set <code>extra_groups</code> or
+          <code>owner_extra_groups</code>. The hidden local admin stays a
+          normal UNIX account, so its sudo is still <code>/etc/group</code>.
+        </p>
+        <p>
+          For the fleet, an Entra group named exactly <code>linux-sudo</code>
+          maps onto the local <code>sudo</code> group. Add or remove the person
+          there. authd learns that on the next online sign-in. The desktop
+          session they are already in keeps the old group list.
+          <code>authctl</code> cannot pull a new group list. An Entra group
+          named <code>sudo</code>, without the <code>linux-</code> prefix, can
+          make login fail because the local group already exists. A local
+          <code>usermod</code> is rewritten on the next online sign-in.
+        </p>
+        <p>
+          To give or take the <code>sudo</code> command without a sign-out,
+          use a file in <code>/etc/sudoers.d/</code>. The name is the full
+          Entra address, quoted because of the <code>@</code>. Write it with
+          <code>visudo -f</code> and mode <code>0440</code>.
+        </p>
+        <pre><code>"name@domain.com" ALL=(ALL:ALL) ALL</code></pre>
+        <p>
+          Delete that file to remove sudo. Also delete their ticket under
+          <code>/run/sudo/ts/</code> so an approval from the last few minutes
+          cannot still be used. authd will not undo this file, because it is
+          not a group. The next <code>sudo</code> command sees the change.
+          The desktop admin prompts still use the groups captured at login,
+          so those prompts change only after they sign in again.
+        </p>
+      </section>
+
+      <section class="panel" aria-labelledby="apps">
+        <h2 id="apps">Apps, dock, and OneDrive</h2>
+        <p>
+          These are installed from the selection file during imaging, before
+          the employee sits down. They are not in the seed today.
+        </p>
+        <ul>
+          <li>The dock sits at the bottom, short and centered, from a system dconf default. It is not on the left.</li>
+          <li>Teams opens <code>https://teams.microsoft.com</code> as an app window. Outlook opens <code>https://outlook.office.com</code>. Both are pinned.</li>
+          <li>The OneDrive package is installed with the public client id only. The sync token is created when that employee signs in. A client secret is not copied onto the laptop.</li>
+          <li>Anything the checklist leaves unchecked is not installed.</li>
+        </ul>
+      </section>
+
+      <section class="panel" aria-labelledby="server">
+        <h2 id="server">Snapshot the VM, then move the server</h2>
+        <p>
+          Nothing on the opsi VM changes until Proxmox has a snapshot of it.
+          The hypervisor is <code>192.168.90.10</code>, published as
+          <code>192.168.6.2:8006</code>. The VM hostname is <code>opsi</code>.
+          Its imaging address is <code>192.168.26.106</code> and its
+          management address is <code>192.168.90.252</code>. Confirm the VMID
+          with <code>qm list</code>. VM 100 is FOG. Leave that VM alone.
+        </p>
+        <p>
+          Take the snapshot while Windows imaging still works on
+          <code>opsiconfd</code> 4.3.53.10. Name it with the date and
+          <code>pre-change</code>. Keep it until one spare laptop has
+          finished <code>win11-x64</code> on the upgraded server. That
+          snapshot is the way back if the server move fails.
+        </p>
+        <h3>opsiconfd 4.3.59.4</h3>
+        <p>
+          The first change after the snapshot is the server image. Pin
+          <code>uibmz/opsi-server:4.3.59.4</code>. On 24 October 2026 the
+          floating tags <code>4.3</code> and <code>4.3-stable</code> were that
+          same image. Stay on the 4.3 line. The git tip 4.3.60.3 is
+          development. The one-sign-in screen does not need this move. Every
+          later change to the depot does, because the running server is the
+          May 2026 line.
+        </p>
+        <p>
+          Stable picked up security fixes in the
+          <code>auditsoftwareonclient</code> and <code>configstate</code>
+          APIs on 20 October 2026, and removed the compromised eMudhra CA
+          certificates from the component trust stores on 23 October 2026.
+          The new image also brings the July Linux boot image and
+          <code>opsipxeconfd</code> 4.3.16.0. A spare
+          <code>win11-x64</code> install has to pass on that image before
+          the boot menu changes.
+        </p>
+        <ul>
+          <li>After the snapshot exists, recreate the <code>opsi-server</code> container from <code>uibmz/opsi-server:4.3.59.4</code>. Leave MariaDB, Redis, and the local Grafana on their current images for this step.</li>
+          <li>Do not run a blanket <code>opsi-package-updater update</code>. The September repository ships a stock <code>win11-x64</code> 4.3.1.0-2, and that package would replace the NextAdmin, Entra, and <code>postinst.d</code> product techs use.</li>
+          <li>Do not set <code>opsi-linux-client-agent</code> to setup. This plan still does not use it.</li>
+          <li><code>run-as-user</code> is refused inside <code>opsiconfd.conf</code> from the July release on. The stock image sets it outside that file. A custom line in the config on the volume has to move to the environment before the new container starts.</li>
+          <li>New images do not install the opsi client agent. PXE and the <code>postinst.d</code> scripts do the install. Inventory, lab identity, and the agent-side NextAdmin password sync will not run. NextAdmin and the Start menu still come from the image scripts.</li>
+          <li>The root volume had 4.8 GB free on 2 November 2026. The image is about 1 GB. Check free space before the pull.</li>
+          <li><code>default.ipxe</code> stays as it is for the spare install. If that install fails, roll the VM back to the snapshot.</li>
+        </ul>
+        <p class="note">
+          Gate 0 in <a href="#first">First try</a> does not use this VM.
+          The Ubuntu ISO goes on the host only after the spare Windows
+          install on 4.3.59.4 has passed.
+        </p>
+      </section>
+
+      <section class="panel" aria-labelledby="build">
+        <h2 id="build">Order we will build it</h2>
+        <p>
+          The snapshot and the server move happen before slice 1. Each slice
+          after that can be used before the next one. The full loop is about
+          three to four weeks. A one-week cut is only a second boot entry that
+          starts the installers we already have, with no sign-in screen and no
+          checklist. That cut still waits until the spare Windows install on
+          4.3.59.4 has passed.
+        </p>
+        <div class="table-region" tabindex="0" aria-label="Implementation slices">
+          <table>
+            <caption>Build order for the depot and for this repository.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Slice</th>
+                <th scope="col">What the tech can do</th>
+                <th scope="col">About</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Snapshot, then 4.3.59.4</th>
+                <td>Proxmox snapshot of the opsi VM. Then pin the server image. One spare Windows install has to succeed before slice 1.</td>
+                <td>Before the other slices</td>
+              </tr>
+              <tr>
+                <th scope="row">1. Console</th>
+                <td>One Entra sign-in, then Windows or Ubuntu starts the current installers.</td>
+                <td>1 week</td>
+              </tr>
+              <tr>
+                <th scope="row">2. Selection file</th>
+                <td>Deploy records the OS, the person, and the MAC. Installers read it.</td>
+                <td>Inside the next week</td>
+              </tr>
+              <tr>
+                <th scope="row">3. Checklist</th>
+                <td>Previous machine’s recorded software can be checked or cleared.</td>
+                <td>Inside the next week</td>
+              </tr>
+              <tr>
+                <th scope="row">4. Ubuntu finish</th>
+                <td>Hidden admin, dock, Teams, Outlook, OneDrive package, encryption with no tech password.</td>
+                <td>About 1 week</td>
+              </tr>
+              <tr>
+                <th scope="row">5. BIOS</th>
+                <td>Dell and Lenovo system firmware, on AC power, before the TPM seal. Ubuntu uses fwupd. Windows uses the vendor catalog tool.</td>
+                <td>A few days, after one encrypted laptop</td>
+              </tr>
+              <tr>
+                <th scope="row">6. Password sync</th>
+                <td>The employee’s Entra password becomes LUKS slot 0 on first online sign-in.</td>
+                <td>A few days</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="have">
+        <h2 id="have">Already built, and the rules</h2>
+        <div class="table-region" tabindex="0" aria-label="Current repo status">
+          <table>
+            <caption>Repo state checked 29 October 2026, plan updated 3 November 2026. The seed builder now writes a sha512-crypt hash and sets the installer channel to stable. source.id is still unchecked until the 26.04 ISO is opened. Do not boot a laptop until that check and the host install in First try. The depot has no Ubuntu ISO and no NoCloud directory.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Ready now</th>
+                <th scope="col">Not in the image yet</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>40 GB root, empty space for encrypted home, wizard that still asks for a password, Argon2id LUKS, TPM seal then PCR 7, recovery slot, baseline firewall, Timeshift on the encrypted home, authd package.</td>
+                <td>Imaging console, selection file, checklist, hidden admin, bottom dock, Teams, Outlook, OneDrive, BIOS flash, the sudoers drop-in, and writing the Entra password into slot 0.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <ul>
+          <li>Do not encrypt the development machine. Its home is already the encrypted volume.</li>
+          <li>Do not delete the plaintext home until a reboot shows <code>/home</code> on <code>/dev/mapper/home_crypt</code>.</li>
+          <li>Keep the recovery passphrase. It is the offline floor.</li>
+          <li>The first Entra account that signs in on a laptop owns that laptop. Use the employee’s account for that login.</li>
+          <li>A ticket number is the only way to image. Deploy stays closed until Infara Scale returns that ticket’s employee and department.</li>
+          <li>authd’s Linux name is the full Entra address. The home directory is <code>/home/user@domain</code>. It has to be created after <code>home_crypt</code> is mounted.</li>
+          <li>After the first Entra password and MFA, the cached password can open later sessions. Starting the Entra flow again asks for MFA again. authd has no switch for “only after a reboot” or “every N logins.”</li>
+        </ul>
+      </section>
+
+      <section class="panel" aria-labelledby="first">
+        <h2 id="first">First try, in order</h2>
+        <p>
+          Snapshot the opsi VM before any change on that host, then move
+          opsiconfd to 4.3.59.4. Those steps are in
+          <a href="#server">Snapshot the VM</a>. Get one spare laptop
+          encrypted before changing the depot boot menu, Entra, or the key
+          map. Each gate has to pass before the next starts. The development
+          machine is not a target. <code>default.ipxe</code> stays as it is
+          until gate 3. A laptop that PXE-boots today is armed for
+          <code>win11-x64</code>. The Ubuntu files go on this host only
+          after that spare Windows install has passed. A USB is a copy of
+          those same files, used when a laptop cannot reach the host.
+        </p>
+        <ol class="steps">
+          <li>
+            <h3>Gate 0. Fix the seed, then rebuild it</h3>
+            <p>
+              <code>imaging/build-imaging-seed.sh</code> now writes a
+              sha512-crypt hash into <code>identity.password</code> and leaves
+              the plain text only in <code>TECH-PASSWORD.txt</code> mode 600.
+              Do not copy that file onto the USB or the depot. The installer
+              channel in the seed is <code>stable</code>.
+            </p>
+            <p>
+              <code>source.id</code> is still <code>ubuntu-desktop-minimal</code>.
+              When the 26.04 LTS ISO is on the host, open
+              <code>casper/install-sources.yaml</code> and set
+              <code>source.id</code> to an id that file contains. Do not boot
+              a laptop before that check.
+            </p>
+            <p>
+              Rebuild with <code>bash imaging/build-imaging-seed.sh</code>.
+              The rebuild rotates the tech password. The old file no longer
+              matches.
+            </p>
+          </li>
+          <li>
+            <h3>Gate 1. The 26.04 LTS ISO on the host, then one spare laptop</h3>
+            <p>
+              Grow <code>ubuntu-lv</code> before copying the ISO. The volume
+              is 48 GB with 4.8 GB free, and the volume group has 49 GB
+              unallocated. Keep the files on the host, outside the opsi
+              container, for example <code>/opt/linuximage/</code>. Listen on
+              <code>192.168.26.106</code> on a new port. Leave ports 69,
+              4447, and 8080, and the container depot, alone. The ISO is
+              Ubuntu 26.04 LTS desktop. Interim releases are not copied.
+            </p>
+            <p>
+              Change the late-commands so they download the tarball and
+              <code>late-install-linux-encryption.sh</code> from that host
+              URL, and use <code>/cdrom</code> only when the URL is missing.
+              Do not edit <code>default.ipxe</code> in this gate.
+            </p>
+            <p>
+              Use a spare laptop with TPM 2.0 and enough disk that a 40 GB
+              root leaves at least 50 GB free at the end. Cable it. The seed
+              has no Wi-Fi. The imaging LAN can reach the Ubuntu archive: a
+              fetch from <code>ens19</code> on the depot returned HTTP 200.
+              Turn Secure Boot on before this boot. The wizard will not
+              encrypt while it is off, and the Ubuntu shim on the ISO is signed.
+              The laptop boots the ISO and the seed from the host.
+            </p>
+            <p>
+              The install account is <code>user</code>. Rename it before the
+              wizard, not after. At the wizard, mark the temporary password,
+              type the password from <code>TECH-PASSWORD.txt</code>, and set
+              the new one. That new password is LUKS slot 0. Slot 1 is the
+              recovery passphrase. Slot 2 is the TPM key, sealed first to
+              PCRs 0, 2, 4, and 7, then resealed to PCR 7. Write the recovery
+              passphrase down and shred the copy on the laptop.
+            </p>
+            <p>
+              This gate passes when a reboot shows <code>/home</code> on
+              <code>/dev/mapper/home_crypt</code> and the account can log in.
+              Leave <code>ENTRA_TENANT_ID</code> and <code>ENTRA_CLIENT_ID</code>
+              unset, so the broker is not configured.
+            </p>
+          </li>
+          <li>
+            <h3>Gate 2. A USB backup of those same files</h3>
+            <p>
+              Write one USB from the ISO and <code>nocloud/</code> directory
+              the host is already serving, including
+              <code>nocloud/extras/</code>. Keep that stick. Boot it only
+              when a laptop cannot reach the host. The kernel argument is
+              then <code>autoinstall ds=nocloud;s=/cdrom/nocloud/</code>.
+              The next laptop still boots from the host.
+            </p>
+          </li>
+          <li>
+            <h3>Gate 3. A choice on the PXE menu</h3>
+            <p>
+              Follow <a href="#boot">the boot screen</a>. DHCP stays on
+              <code>snponly.efi</code>. <code>default.ipxe</code> chainloads
+              the graphical GRUB menu, which falls through to
+              <code>grub-simple.cfg</code> when graphics fail, and on Esc.
+              Prove that chain on one Lenovo L15 Gen 3 before it is the menu
+              every laptop gets. If that EFI does not start, iPXE shows the
+              same choices as text. Windows chainloads auto-enroll through a
+              second iPXE file, not through <code>default.ipxe</code>. A
+              timeout must not start Ubuntu. A per-client file with timeout 0
+              must not load first. No laptop that should stay as it is should
+              PXE until that menu is the one being served.
+            </p>
+          </li>
+          <li>
+            <h3>Gate 4. Entra, after encryption already works</h3>
+            <p>
+              Log in once as the local admin while <code>/home</code> is the
+              encrypted volume. Then apply <code>setup-entra-authd.sh</code>
+              with the UbuntuOauth tenant and client ids. The first Entra
+              sign-in is the employee’s, with the Entra password and MFA.
+              Leave the local account visible until that login has opened a
+              session and sudo works. Slot 0 stays the wizard password.
+              Writing the Entra password into slot 0 is a later hook that
+              uses the TPM-held key. <code>sync-luks-passwd</code> cannot do
+              that job.
+            </p>
+          </li>
+          <li>
+            <h3>Gate 5. The sign-in screen</h3>
+            <p>
+              Build the console only after gates 1 through 3 have finished on
+              a spare laptop. Deploy writes the selection file and chainloads
+              a path that has already succeeded. Windows stays
+              <code>win11-x64</code>. The file adds product actions. It does
+              not replace the product. Do not set
+              <code>opsi-linux-client-agent</code> to setup.
+            </p>
+          </li>
+        </ol>
+        <p class="note">
+          Hidden admin, the bottom dock, Teams, Outlook, OneDrive, the BIOS
+          flash, and the target key map wait until a laptop has passed gate 1.
+          Putting them on the first boot stacks failures that are still separate.
+        </p>
+      </section>
+
+      <section class="panel" aria-labelledby="review">
+        <h2 id="review">Review, 29 October 2026</h2>
+        <p>
+          Read-only SSH to the opsi host. Nothing on the host was changed.
+          The SSH name <code>192.168.6.2</code> port <code>5022</code> lands
+          on host <code>opsi</code>. That host’s PXE address is
+          <code>192.168.26.106</code> on <code>ens19</code>. It also has
+          <code>192.168.90.252</code> on <code>ens18</code>. The boot files
+          use <code>192.168.26.106</code>.
+        </p>
+        <div class="table-region" tabindex="0" aria-label="Depot findings">
+          <table>
+            <caption>What blocks the plan on the depot that is running now.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Finding</th>
+                <th scope="col">What it means</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">No room for the Ubuntu ISO</th>
+                <td>The root volume is 48 GB, 90% full, 4.8 GB free. <code>win11-x64</code> is already 8.6 GB. A desktop ISO does not fit. The volume group still has 49 GB unallocated. The volume has to be grown before the ISO is copied. No Ubuntu ISO and no <code>linuximage</code> directory are on the host. Nothing is listening on port 80.</td>
+              </tr>
+              <tr>
+                <th scope="row">PXE always arms Windows</th>
+                <td>Confirmed again on 2 November 2026. Imaging DHCP hands out <code>snponly.efi</code>, so the laptop never loads GRUB. <code>default.ipxe</code> auto-enrolls and sets <code>win11-x64</code> to setup. A menu that leaves this chain in place still installs Windows. The GRUB files are on the depot: gfxterm, 3 second timeout, local disk first. Per-MAC files from <code>opsipxeconfd</code> wait 0 seconds and have one Windows entry. Details are in <a href="#boot">the boot screen</a>.</td>
+              </tr>
+              <tr>
+                <th scope="row">Paid Linux agent is present</th>
+                <td><code>opsi-linux-client-agent</code> is on the depot, about 290 MB. The plan does not use it. There is no <code>ubuntu26-04</code> product, which matches the NoCloud path. Lab console on port 8443 is the inventory sidecar, not this imaging screen.</td>
+              </tr>
+              <tr>
+                <th scope="row">The seed is not bootable as built</th>
+                <td>The seed builder now hashes the install password and sets the installer channel to <code>stable</code>. <code>source.id</code> is still unchecked against the ISO. Late-commands read the tarball only from <code>/cdrom</code>, so the host URL cannot finish encryption until gate 1.</td>
+              </tr>
+              <tr>
+                <th scope="row">Encryption scripts are the old map</th>
+                <td>What runs today is slot 0 wizard password, slot 1 recovery, slot 2 TPM. The first seal is PCRs 0, 2, 4, and 7. Script 08 reseals to PCR 7. The wizard refuses to encrypt until Secure Boot is on, and it still requires the login and recovery password files. Passwordless imaging stays after gate 1.</td>
+              </tr>
+              <tr>
+                <th scope="row">Slot 0 sync cannot do slice 5</th>
+                <td><code>sync-luks-passwd</code> changes slot 0 only when the caller presents the current slot 0 password. The employee’s Entra password is not that secret. Slice 5 has to add slot 0 with the TPM-held key.</td>
+              </tr>
+              <tr>
+                <th scope="row">Timeshift is not a copy of the person’s files</th>
+                <td>Snapshots are stored on the encrypted home disk and exclude <code>/home/&lt;user&gt;</code>. They are a local snapshot of the rest of the system. They do not leave the laptop.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">
+          The seed build is still PASS=55 FAIL=0. That check does not boot a
+          laptop and does not talk to this depot.
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        Sources: brain plans #450 and #993, read-only SSH to host
+        <code>opsi</code> on 29 October 2026 and 2 November 2026, the tech
+        guide stored on that host, and the LinuxEncryption seed
+        (<code>imaging/ubuntu-26.04-desktop-autoinstall.yaml</code>,
+        <code>imaging/late-install-linux-encryption.sh</code>,
+        <code>scripts/02-setup-encryption.sh</code>,
+        <code>scripts/08-harden-tpm-pcr7-selfheal.sh</code>,
+        <code>scripts/setup-entra-authd.sh</code>,
+        <code>scripts/setup-timeshift.sh</code>).
+        The imaging console, the selection file, and the unattended desktop
+        finish are the plan, not a running system.
+        This file was updated locally and was not published.
+      </p>
+    </footer>
+  </div>
+</body>
+</html>

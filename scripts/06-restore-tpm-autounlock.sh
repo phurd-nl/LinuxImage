@@ -56,7 +56,7 @@ dd if=/dev/urandom bs=64 count=1 of="$KEY" status=none
 
 say "Adding the new TPM keyslot."
 say "  -> At the prompt 'Enter any existing passphrase', type your LOGIN PASSWORD."
-cryptsetup luksAddKey "$LUKS_DEV" "$KEY"
+cryptsetup luksAddKey "${LUKS_KDF[@]}" "$LUKS_DEV" "$KEY"
 
 say "Sealing the new key to the TPM (PCR 7) -> $JWE"
 clevis encrypt tpm2 "$PCR" < "$KEY" > "$JWE"
@@ -83,7 +83,7 @@ MNT="/home"
 MAP=__MAPPER__
 PURGE_DONE=/var/lib/linux-encryption-setup/purge_done
 STASH=/dev/shm/.home-crypt-authtok
-[ "$PAM_USER" = "__USER__" ] || exit 0
+# Any session, including an Entra authd login, opens the same volume.
 K=$(mktemp -p /dev/shm); chmod 600 "$K"
 cleanup(){ shred -u "$K" "$STASH" 2>/dev/null || rm -f "$K" "$STASH"; }
 trap cleanup EXIT
@@ -116,15 +116,14 @@ cat > /usr/local/sbin/home-crypt-close <<'CLOSE'
 #!/bin/bash
 MNT="/home"
 STASH=/dev/shm/.home-crypt-authtok
-[ "$PAM_USER" = "__USER__" ] || exit 0
-if loginctl list-sessions --no-legend 2>/dev/null | awk '{print $3}' | grep -qx "__USER__"; then
+if loginctl list-sessions --no-legend 2>/dev/null | grep -q '[^[:space:]]'; then
   exit 0
 fi
 shred -u "$STASH" 2>/dev/null || rm -f "$STASH"
 swapoff "$MNT/swap.img" 2>/dev/null || true
 umount "$MNT" 2>/dev/null || true
 cryptsetup close __MAPPER__ 2>/dev/null || true
-logger -t home-crypt "/home relocked for __USER__"
+logger -t home-crypt "/home relocked"
 exit 0
 CLOSE
 sed -i -e "s/__USER__/$USERNAME/g" -e "s#__DEV__#$LUKS_DEV#g" -e "s/__MAPPER__/$MAPPER/g" \
@@ -136,7 +135,8 @@ PAMF=/etc/pam.d/common-session
 OPEN_CTL=optional
 [ -f /var/lib/linux-encryption-setup/purge_done ] && OPEN_CTL=required
 if grep -q home-crypt-open "$PAMF"; then
-  sed -i -E "s|^session[[:space:]]+(optional|required)[[:space:]]+pam_exec\.so[[:space:]]+quiet[[:space:]]+/usr/local/sbin/home-crypt-open|session ${OPEN_CTL} pam_exec.so quiet /usr/local/sbin/home-crypt-open|" "$PAMF"
+  # '#' delimiter: the pattern itself contains '|' in (optional|required).
+  sed -i -E "s#^session[[:space:]]+(optional|required)[[:space:]]+pam_exec\.so[[:space:]]+quiet[[:space:]]+/usr/local/sbin/home-crypt-open#session ${OPEN_CTL} pam_exec.so quiet /usr/local/sbin/home-crypt-open#" "$PAMF"
 else
   echo "session ${OPEN_CTL} pam_exec.so quiet /usr/local/sbin/home-crypt-open" >> "$PAMF"
 fi
@@ -170,11 +170,11 @@ chmod +x /etc/kernel/postinst.d/zz-clevis-reseal
 say "Installing password-sync hook"
 cat > /usr/local/sbin/sync-luks-passwd <<'SYNC'
 #!/bin/bash
-[ "$PAM_USER" = "__USER__" ] || exit 0
 [ -z "$PAM_AUTHTOK" ] && exit 0
 [ -z "$PAM_OLDAUTHTOK" ] && exit 0
 printf '%s\n%s\n' "$PAM_OLDAUTHTOK" "$PAM_AUTHTOK" | \
-  cryptsetup luksChangeKey __DEV__ --key-slot 0 --batch-mode 2>/dev/null \
+  cryptsetup luksChangeKey __DEV__ --key-slot 0 --batch-mode \
+    --pbkdf argon2id --pbkdf-memory 524288 --iter-time 3000 2>/dev/null \
   && logger -t luks-sync "keyslot 0 synced for $PAM_USER" \
   || logger -t luks-sync "WARN sync failed for $PAM_USER"
 SYNC

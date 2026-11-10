@@ -173,8 +173,12 @@ class Handler(BaseHTTPRequestHandler):
                     return _err(self, 400, "Password required")
                 if len(pw) > 2048:
                     return _err(self, 400, "Password too long")
+                new_pw = body.get("new_password")
+                if new_pw is not None:
+                    if not isinstance(new_pw, str) or not 8 <= len(new_pw) <= 2048:
+                        return _err(self, 400, "New password must be 8-2048 characters")
                 try:
-                    result = engine.start_setup(pw)
+                    result = engine.start_setup(pw, new_password=new_pw)
                 except RuntimeError as exc:
                     msg = str(exc)
                     if "Password incorrect" in msg or "password" in msg.lower():

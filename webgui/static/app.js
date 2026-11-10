@@ -167,19 +167,32 @@
     pollTimer = null;
   }
 
+  $("temp-pw-toggle").addEventListener("change", (e) => {
+    $("new-pw-fields").classList.toggle("hidden", !e.target.checked);
+  });
+
   $("panel-password").addEventListener("submit", async (e) => {
     e.preventDefault();
     setError("");
     const pw = $("password").value;
     if (pw.length < 1) return setError("Enter your Ubuntu login password");
+    const body = { password: pw };
+    if ($("temp-pw-toggle").checked) {
+      const npw = $("new-password").value;
+      if (npw.length < 8) return setError("New password must be at least 8 characters");
+      if (npw !== $("confirm-password").value) return setError("New passwords do not match");
+      body.new_password = npw;
+    }
     const btn = $("btn-start");
     btn.disabled = true;
     btn.textContent = "Starting…";
     try {
       showPanel("progress");
       $("status-text").textContent = "Detecting disk and verifying password…";
-      await api("/api/setup/start", { method: "POST", body: JSON.stringify({ password: pw }) });
+      await api("/api/setup/start", { method: "POST", body: JSON.stringify(body) });
       $("password").value = "";
+      $("new-password").value = "";
+      $("confirm-password").value = "";
       startPoll();
     } catch (err) {
       showPanel("password");
@@ -190,9 +203,28 @@
     }
   });
 
-  $("btn-recheck-sb").addEventListener("click", () => {
-    setError("");
-    refresh().catch((e) => setError(e.message));
+  $("btn-recheck-sb").addEventListener("click", async () => {
+    const msg = $("sb-msg");
+    msg.classList.add("hidden");
+    const btn = $("btn-recheck-sb");
+    btn.disabled = true;
+    btn.textContent = "Checking…";
+    try {
+      await refresh();
+      if (!panels.secureboot.classList.contains("hidden")) {
+        msg.textContent =
+          "Secure Boot still shows disabled. Restart, enable it in the UEFI/BIOS setup, then log back in — this screen will move on automatically. " +
+          "If you are a technician and this machine misreports Secure Boot, run: " +
+          "sudo touch /var/lib/linux-encryption-setup/secureboot-override — then click again.";
+        msg.classList.remove("hidden");
+      }
+    } catch (e) {
+      msg.textContent = e.message;
+      msg.classList.remove("hidden");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "I've enabled Secure Boot";
+    }
   });
 
   $("btn-reboot").addEventListener("click", async () => {

@@ -110,7 +110,7 @@ K=$(mktemp -p /dev/shm); chmod 600 "$K"
 trap 'shred -u "$K" 2>/dev/null || rm -f "$K"' EXIT
 dd if=/dev/urandom bs=64 count=1 of="$K" status=none
 echo ">> At the prompt, type a WORKING passphrase (login password or recovery phrase):"
-cryptsetup luksAddKey "$DEV" "$K"
+cryptsetup luksAddKey --pbkdf argon2id --pbkdf-memory 524288 --iter-time 3000 "$DEV" "$K"
 clevis encrypt tpm2 "$PCR" < "$K" > "$JWE.new"
 clevis decrypt < "$JWE.new" | cmp -s - "$K" || { echo "verify failed — $JWE unchanged"; rm -f "$JWE.new"; exit 1; }
 mv "$JWE.new" "$JWE"; chmod 400 "$JWE"; chown root:root "$JWE"
@@ -154,7 +154,8 @@ PCR='{"pcr_bank":"sha256","pcr_ids":"7"}'
 STASH=/dev/shm/.home-crypt-authtok
 PURGE_DONE=/var/lib/linux-encryption-setup/purge_done
 STASH_TTL=60
-[ "$PAM_USER" = "__USER__" ] || exit 0
+# Any session, including an Entra authd login, opens the same volume.
+# Self-heal still uses only the wizard user's stashed password.
 K=$(mktemp -p /dev/shm); chmod 600 "$K"
 cleanup(){ shred -u "$K" "$STASH" 2>/dev/null || rm -f "$K" "$STASH"; }
 trap cleanup EXIT
@@ -190,7 +191,7 @@ else
   logger -t home-crypt "TPM withheld key (PCR drift) — attempting self-heal for $PAM_USER"
   if [ "$use_stash" = 1 ]; then
     dd if=/dev/urandom bs=64 count=1 of="$K" status=none
-    if cryptsetup luksAddKey --key-file "$STASH" "$DEV" "$K" 2>/dev/null; then
+    if cryptsetup luksAddKey --pbkdf argon2id --pbkdf-memory 524288 --iter-time 3000 --key-file "$STASH" "$DEV" "$K" 2>/dev/null; then
       if clevis encrypt tpm2 "$PCR" < "$K" > "$JWE.new" 2>/dev/null && clevis decrypt < "$JWE.new" | cmp -s - "$K"; then
         mv "$JWE.new" "$JWE"; chmod 400 "$JWE"; chown root:root "$JWE"
         logger -t home-crypt "self-heal: resealed key to current PCR 7 — auto-unlock restored"
@@ -243,7 +244,8 @@ PURGE_DONE=/var/lib/linux-encryption-setup/purge_done
 OPEN_CTL=optional
 [ -f "$PURGE_DONE" ] && OPEN_CTL=required
 if grep -q home-crypt-open "$PAMS"; then
-  sed -i -E "s|^session[[:space:]]+(optional|required)[[:space:]]+pam_exec\.so[[:space:]]+quiet[[:space:]]+/usr/local/sbin/home-crypt-open|session ${OPEN_CTL} pam_exec.so quiet /usr/local/sbin/home-crypt-open|" "$PAMS"
+  # '#' delimiter: the pattern itself contains '|' in (optional|required).
+  sed -i -E "s#^session[[:space:]]+(optional|required)[[:space:]]+pam_exec\.so[[:space:]]+quiet[[:space:]]+/usr/local/sbin/home-crypt-open#session ${OPEN_CTL} pam_exec.so quiet /usr/local/sbin/home-crypt-open#" "$PAMS"
 else
   echo "session ${OPEN_CTL} pam_exec.so quiet /usr/local/sbin/home-crypt-open" >> "$PAMS"
 fi

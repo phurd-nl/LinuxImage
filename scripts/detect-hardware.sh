@@ -7,7 +7,7 @@ set -euo pipefail
 # Runs as root in production (wizard systemd service). Works unprivileged for
 # read-only fields; free-space and blockers need root for accuracy.
 exec python3 <<'PY'
-import json, os, re, subprocess
+import json, os, re, shutil, subprocess
 
 root = os.geteuid() == 0
 
@@ -76,7 +76,7 @@ if luks_dev:
 
 # Free space (sgdisk — requires root)
 free_mb = 0
-if root and run("command", "-v", "sgdisk").returncode == 0:
+if root and shutil.which("sgdisk"):
     r = sh(f"sgdisk -p {disk} 2>/dev/null | grep -i 'free space' | tail -1")
     if r.stdout.strip():
         nums = re.findall(r"[\d.]+", r.stdout)
@@ -97,6 +97,11 @@ for line in r.stdout.splitlines():
 # TPM + Secure Boot
 sb = run("mokutil", "--sb-state")
 secure_boot = sb.returncode == 0 and "enabled" in (sb.stdout + sb.stderr).lower()
+# Tech override: root-only marker accepts Secure Boot state when firmware
+# misreports (or a tech knowingly proceeds without it — weaker TPM guarantee).
+sb_override = os.path.isfile("/var/lib/linux-encryption-setup/secureboot-override")
+if sb_override:
+    secure_boot = True
 tpm = os.path.exists("/dev/tpmrm0") or os.path.exists("/dev/tpm0")
 
 # Phase detection (resume-aware)
@@ -163,6 +168,7 @@ print(json.dumps({
     "mapper": mapper,
     "free_mb": free_mb,
     "secure_boot": secure_boot,
+    "secure_boot_override": sb_override,
     "tpm": tpm,
     "home_encrypted": home_encrypted,
     "pcr7": pcr7,

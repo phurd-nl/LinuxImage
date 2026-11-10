@@ -39,9 +39,13 @@ else
   echo "WIZARD_AUTO=1: creating partition in largest free block on $DISK"
 fi
 
-# -n 4:0:0  => partition 4, start at first aligned free sector, end at last
-# -t 4:8300 => Linux filesystem type code
-sgdisk -n "$PARTNUM:0:0" -t "$PARTNUM:8300" -c "$PARTNUM:$MAPPER" "$DISK"
+# Largest free block, trimmed to whole MiB. "-n N:0:0" ends at the last usable
+# sector, and an odd sector count makes luksFormat --sector-size 4096 fail with
+# "Device size is not aligned to requested sector size".
+start=$(sgdisk -f "$DISK")
+end=$(sgdisk -E "$DISK")
+end=$(( start + (end - start + 1) / 2048 * 2048 - 1 ))
+sgdisk -n "$PARTNUM:$start:$end" -t "$PARTNUM:8300" -c "$PARTNUM:$MAPPER" "$DISK"
 partprobe "$DISK"
 sleep 1
 

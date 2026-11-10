@@ -33,7 +33,7 @@ EOF
 read -rp "Ready to add a new recovery passphrase? [y/N] " a
 [ "$a" = y ] || [ "$a" = Y ] || { echo "aborted (nothing changed)"; exit 1; }
 
-cryptsetup luksAddKey "$LUKS_DEV"
+cryptsetup luksAddKey "${LUKS_KDF[@]}" "$LUKS_DEV"
 
 say "Keyslot added. Verify it works — type the NEW recovery passphrase at the prompt:"
 if cryptsetup open --test-passphrase "$LUKS_DEV"; then

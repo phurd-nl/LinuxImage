@@ -26,8 +26,11 @@ if [ -n "$(blkid -o value -s TYPE "$LUKS_DEV" 2>/dev/null || true)" ]; then
   exit 1
 fi
 
-# Secure Boot must be ON (you chose SB-first; PCR 7 depends on it).
-if ! mokutil --sb-state 2>/dev/null | grep -qi 'enabled'; then
+# Network imaging boots with Secure Boot off. The marker records that choice
+# and seals /home to the TPM state this laptop actually has.
+if [ -f /var/lib/linux-encryption-setup/secureboot-override ]; then
+  say "Secure Boot is off. This image seals /home to the current TPM state."
+elif ! mokutil --sb-state 2>/dev/null | grep -qi 'enabled'; then
   echo "ABORT: Secure Boot is not enabled. Enable it in UEFI first (see RUNBOOK step 1)."
   exit 1
 fi
@@ -43,20 +46,23 @@ tpm2_getcap properties-fixed >/dev/null 2>&1 || { echo "ABORT: TPM 2.0 not acces
 say "TPM 2.0 OK, Secure Boot enabled"
 
 # ---- LUKS format + migrate /home ------------------------------------------
-say "Formatting $LUKS_DEV (LUKS2, AES-XTS-512)."
+say "Formatting $LUKS_DEV (LUKS2, AES-XTS-512, Argon2id, 4K sectors)."
 if [ "${WIZARD_AUTO:-}" = "1" ]; then
   [ -f "${WIZARD_LOGIN_PW_FILE:-}" ] || { echo "ABORT: WIZARD_LOGIN_PW_FILE missing"; exit 1; }
   say "  -> Using login password from wizard (keyslot 0)"
   cryptsetup luksFormat --type luks2 --batch-mode \
     --cipher aes-xts-plain64 --key-size 512 \
-    --hash sha256 --iter-time 3000 \
+    --sector-size 4096 --label home-luks \
+    "${LUKS_KDF[@]}" \
     "$LUKS_DEV" "${WIZARD_LOGIN_PW_FILE}"
 else
   say "  -> At the prompt, enter YOUR LOGIN PASSWORD. It becomes keyslot 0 and is"
   say "     kept in sync with your login password by the password hook below."
   cryptsetup luksFormat --type luks2 \
     --cipher aes-xts-plain64 --key-size 512 \
-    --hash sha256 --iter-time 3000 "$LUKS_DEV"
+    --sector-size 4096 --label home-luks \
+    "${LUKS_KDF[@]}" \
+    "$LUKS_DEV"
 fi
 
 if [ "${WIZARD_AUTO:-}" = "1" ]; then
@@ -80,11 +86,16 @@ cryptsetup close "$MAPPER"
 if [ "${WIZARD_AUTO:-}" = "1" ]; then
   [ -f "${WIZARD_RECOVERY_PW_FILE:-}" ] || { echo "ABORT: WIZARD_RECOVERY_PW_FILE missing"; exit 1; }
   say "Adding recovery passphrase from wizard/Ansible (keyslot 1)"
-  cryptsetup luksAddKey "$LUKS_DEV" "${WIZARD_RECOVERY_PW_FILE}" --key-file "${WIZARD_LOGIN_PW_FILE}"
+  cryptsetup luksAddKey "${LUKS_KDF[@]}" "$LUKS_DEV" "${WIZARD_RECOVERY_PW_FILE}" --key-file "${WIZARD_LOGIN_PW_FILE}"
 else
   say "Add a RECOVERY passphrase now. Store it OFFLINE (printed / password mgr)."
   say "  -> This is your only way in if the TPM is ever cleared."
-  cryptsetup luksAddKey "$LUKS_DEV"
+  cryptsetup luksAddKey "${LUKS_KDF[@]}" "$LUKS_DEV"
+fi
+# The imaging host already has this phrase once recovery-filed exists.
+if [ -f /var/lib/linux-encryption-setup/recovery-filed ]; then
+  shred -u /var/lib/linux-encryption-setup/recovery-passphrase 2>/dev/null \
+    || rm -f /var/lib/linux-encryption-setup/recovery-passphrase
 fi
 
 # ---- TPM-sealed keyfile (keyslot 2; 0=login, 1=recovery) -------------------
@@ -95,9 +106,9 @@ KEY=$(mktemp -p /dev/shm)
 chmod 600 "$KEY"
 dd if=/dev/urandom bs=64 count=1 of="$KEY" status=none
 if [ "${WIZARD_AUTO:-}" = "1" ]; then
-  cryptsetup luksAddKey "$LUKS_DEV" "$KEY" --key-file "${WIZARD_LOGIN_PW_FILE}"
+  cryptsetup luksAddKey "${LUKS_KDF[@]}" "$LUKS_DEV" "$KEY" --key-file "${WIZARD_LOGIN_PW_FILE}"
 else
-  cryptsetup luksAddKey "$LUKS_DEV" "$KEY"          # authorise with a passphrase above
+  cryptsetup luksAddKey "${LUKS_KDF[@]}" "$LUKS_DEV" "$KEY"          # authorise with a passphrase above
 fi
 clevis encrypt tpm2 "$PCR" < "$KEY" > "$JWE"
 chmod 400 "$JWE"; chown root:root "$JWE"
@@ -120,7 +131,7 @@ MNT="/home"
 MAP=__MAPPER__
 PURGE_DONE=/var/lib/linux-encryption-setup/purge_done
 STASH=/dev/shm/.home-crypt-authtok
-[ "$PAM_USER" = "__USER__" ] || exit 0
+# Any session, including an Entra authd login, opens the same volume.
 K=$(mktemp -p /dev/shm); chmod 600 "$K"
 cleanup(){ shred -u "$K" "$STASH" 2>/dev/null || rm -f "$K" "$STASH"; }
 trap cleanup EXIT
@@ -158,9 +169,8 @@ cat > /usr/local/sbin/home-crypt-close <<'CLOSE'
 #!/bin/bash
 MNT="/home"
 STASH=/dev/shm/.home-crypt-authtok
-[ "$PAM_USER" = "__USER__" ] || exit 0
-# only act when no login sessions for the user remain (reliable for GDM/Wayland)
-if loginctl list-sessions --no-legend 2>/dev/null | awk '{print $3}' | grep -qx "__USER__"; then
+# Keep the volume open while any login session remains.
+if loginctl list-sessions --no-legend 2>/dev/null | grep -q '[^[:space:]]'; then
   exit 0
 fi
 # Drop any leftover self-heal stash (should already be gone; belt-and-braces).
@@ -168,7 +178,7 @@ shred -u "$STASH" 2>/dev/null || rm -f "$STASH"
 swapoff "$MNT/swap.img" 2>/dev/null || true
 umount "$MNT" 2>/dev/null || true
 cryptsetup close __MAPPER__ 2>/dev/null || true
-logger -t home-crypt "/home relocked for __USER__"
+logger -t home-crypt "/home relocked"
 exit 0
 CLOSE
 sed -i -e "s/__USER__/$USERNAME/g" -e "s#__DEV__#$LUKS_DEV#g" -e "s/__MAPPER__/$MAPPER/g" \
@@ -208,15 +218,26 @@ dracut --force 2>/dev/null || true
 HOOK
 chmod +x /etc/kernel/postinst.d/zz-clevis-reseal
 
-# ---- Password-sync hook (keeps keyslot 0 == login password) ---------------
+# Keep a root-only copy of the install password so the first Entra sign-in
+# can replace it. The wizard shreds its own copy when it exits.
+mkdir -p /var/lib/linux-encryption-setup
+printf '%s\n' "$LUKS_DEV" > /var/lib/linux-encryption-setup/luks.dev
+printf '0\n' > /var/lib/linux-encryption-setup/user-slot
+chmod 400 /var/lib/linux-encryption-setup/luks.dev /var/lib/linux-encryption-setup/user-slot
+if [ -n "${WIZARD_LOGIN_PW_FILE:-}" ] && [ -f "$WIZARD_LOGIN_PW_FILE" ]; then
+  install -m 400 "$WIZARD_LOGIN_PW_FILE" /var/lib/linux-encryption-setup/install.key
+fi
+
+# ---- Password-sync hook (keeps the user passphrase == login password) ------
 cat > /usr/local/sbin/sync-luks-passwd <<'SYNC'
 #!/bin/bash
-# Only the encrypted-home owner may change keyslot 0.
-[ "$PAM_USER" = "__USER__" ] || exit 0
+# Whoever knows keyslot 0 may rotate it, including an Entra login whose
+# local password is that slot. A wrong old password fails the change.
 [ -z "$PAM_AUTHTOK" ] && exit 0
 [ -z "$PAM_OLDAUTHTOK" ] && exit 0
 printf '%s\n%s\n' "$PAM_OLDAUTHTOK" "$PAM_AUTHTOK" | \
-  cryptsetup luksChangeKey __DEV__ --key-slot 0 --batch-mode 2>/dev/null \
+  cryptsetup luksChangeKey __DEV__ --key-slot 0 --batch-mode \
+    --pbkdf argon2id --pbkdf-memory 524288 --iter-time 3000 2>/dev/null \
   && logger -t luks-sync "keyslot 0 synced for $PAM_USER" \
   || logger -t luks-sync "WARN sync failed for $PAM_USER"
 SYNC
@@ -224,6 +245,13 @@ sed -i -e "s#__DEV__#$LUKS_DEV#g" -e "s/__USER__/$USERNAME/g" /usr/local/sbin/sy
 chmod 700 /usr/local/sbin/sync-luks-passwd; chown root:root /usr/local/sbin/sync-luks-passwd
 grep -q sync-luks-passwd /etc/pam.d/common-password || \
   echo "password optional pam_exec.so expose_authtok /usr/local/sbin/sync-luks-passwd" >> /etc/pam.d/common-password
+
+if [ -f /usr/local/sbin/entra-luks-sync ]; then
+  grep -q entra-luks-sync /etc/pam.d/common-auth || \
+    echo "auth optional pam_exec.so expose_authtok quiet /usr/local/sbin/entra-luks-sync" >> /etc/pam.d/common-auth
+  grep -q entra-luks-sync /etc/pam.d/common-password || \
+    echo "password optional pam_exec.so expose_authtok quiet /usr/local/sbin/entra-luks-sync" >> /etc/pam.d/common-password
+fi
 
 # ---- AIDE -----------------------------------------------------------------
 say "Configuring AIDE baseline"

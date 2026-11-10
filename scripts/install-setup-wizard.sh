@@ -21,11 +21,10 @@ say() { echo "[$(date +%T)] $*"; }
 
 say "Installing Ubuntu packages"
 apt-get update -qq
+# chromium-browser is a snap shim. Its postinst fails in the installer
+# chroot and would abort the image. The desktop already has Firefox.
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
-  python3 curl gdisk cryptsetup clevis clevis-tpm2 tpm2-tools mokutil pamtester \
-  chromium-browser 2>/dev/null \
-  || DEBIAN_FRONTEND=noninteractive apt-get install -y \
-  python3 curl gdisk cryptsetup clevis clevis-tpm2 tpm2-tools mokutil pamtester chromium
+  python3 curl gdisk cryptsetup clevis clevis-tpm2 tpm2-tools mokutil pamtester
 
 if [ "${SKIP_RSYNC:-}" != "1" ]; then
   say "Installing to $INSTALL_ROOT"

@@ -16,6 +16,11 @@ MAPPER=${MAPPER:-home_crypt}      # /dev/mapper name for the opened LUKS volume
 
 JWE=${JWE:-/etc/luks-keyfile.jwe} # install path of the TPM-sealed key (constant; rarely change)
 
+# Passphrase slots use Argon2id. A stolen disk then costs memory, not just GPU time.
+# 512 MiB fits an 8 GB laptop. Login uses the TPM key, so this cost is paid only
+# when a person types a passphrase (recovery, or the TPM will not unseal).
+LUKS_KDF=(--pbkdf argon2id --pbkdf-memory 524288 --iter-time 3000)
+
 # Derive the partition node. nvme/mmcblk devices insert a 'p' before the number
 # (nvme0n1 -> nvme0n1p4); sd/vd devices do not (sda -> sda4).
 if [[ "$DISK" =~ [0-9]$ ]]; then

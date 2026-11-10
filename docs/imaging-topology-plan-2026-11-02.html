@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Imaging topology</title>
+  <style>
+    :root {
+      --bg: #06101f;
+      --rail: rgba(8, 18, 42, 0.55);
+      --panel: rgba(12, 28, 62, 0.42);
+      --line: rgba(150, 186, 240, 0.18);
+      --ink: #e7eef8;
+      --muted: #9eb0c9;
+      --glass: blur(18px);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; color: var(--ink); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; background: radial-gradient(900px 520px at 12% 0%, rgba(48, 86, 180, 0.45), transparent 60%), radial-gradient(800px 480px at 90% 100%, rgba(24, 58, 140, 0.5), transparent 55%), var(--bg); }
+    button, label { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+    .app { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; }
+    .top { display: flex; justify-content: space-between; gap: 1rem; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid var(--line); background: rgba(8, 18, 42, 0.5); backdrop-filter: var(--glass); position: sticky; top: 0; z-index: 2; }
+    .top h1 { margin: 0; font-size: 1.15rem; letter-spacing: -0.03em; }
+    .top p { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.84rem; }
+    .top-actions { display: flex; gap: 0.45rem; align-items: center; }
+    .ghost { background: rgba(18, 40, 82, 0.45); color: var(--ink); border: 1px solid rgba(160, 196, 255, 0.28); border-radius: 999px; padding: 0.38rem 0.75rem; font-size: 0.78rem; font-weight: 700; backdrop-filter: var(--glass); text-decoration: none; }
+    .ghost:hover { background: rgba(28, 58, 112, 0.55); }
+    .workspace { display: grid; grid-template-columns: 16.5rem 1fr; align-items: start; }
+    aside { position: sticky; top: 4.4rem; background: var(--rail); backdrop-filter: var(--glass); border-right: 1px solid var(--line); padding: 0.75rem; display: flex; flex-direction: column; gap: 0.7rem; min-height: calc(100vh - 4.4rem); }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 0.85rem; padding: 0.75rem 0.8rem 0.85rem; }
+    .panel h2 { margin: 0 0 0.55rem; font-size: 0.78rem; letter-spacing: 0.04em; }
+    .panel p { margin: 0; color: #d5deea; font-size: 0.86rem; }
+    .legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.38rem; }
+    .legend li { display: flex; gap: 0.45rem; align-items: center; color: #d5deea; font-size: 0.82rem; }
+    .swatch { width: 0.7rem; height: 0.7rem; border-radius: 0.2rem; display: inline-block; flex: 0 0 auto; }
+    main { padding: 0.9rem 1rem 2rem; display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
+    .lane { background: rgba(8, 18, 42, 0.28); border: 1px solid var(--line); border-radius: 0.9rem; padding: 0.7rem 0.8rem 0.85rem; }
+    .lane h2 { margin: 0 0 0.55rem; font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); display: flex; gap: 0.5rem; align-items: center; }
+    .lane h2 b { color: var(--ink); letter-spacing: 0; text-transform: none; font-size: 0.95rem; }
+    .num { width: 1.35rem; height: 1.35rem; border-radius: 50%; display: grid; place-items: center; font-size: 0.75rem; font-weight: 800; background: #2563eb; color: #fff; }
+    .row { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0.35rem 0.15rem; }
+    .arrow, .or { align-self: center; color: #9eb0c9; font-weight: 800; padding: 0 0.15rem; font-size: 1.05rem; }
+    .or { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; }
+    .drop { display: flex; align-items: center; gap: 0.55rem; color: var(--muted); font-size: 0.78rem; padding: 0.15rem 0.4rem 0.15rem 0.2rem; }
+    .drop i { width: 1.4rem; height: 1.4rem; border-radius: 50%; display: grid; place-items: center; border: 1px solid rgba(160, 196, 255, 0.35); color: #fff; font-style: normal; font-weight: 800; }
+    .device { width: 210px; text-align: left; border-radius: 0.75rem; border: 1px solid rgba(170, 200, 255, 0.28); color: #fff; padding: 0.55rem 0.65rem 0.65rem; background: rgba(10, 24, 56, 0.55); backdrop-filter: var(--glass); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22); }
+    .device[aria-current="true"] { outline: 2px solid #fff; outline-offset: 3px; }
+    .device.continues { outline: 1px solid #fbbf24; }
+    .device .rowline { display: flex; justify-content: space-between; gap: 0.35rem; align-items: center; }
+    .kicker, .pill { border-radius: 999px; font-size: 0.62rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.14rem 0.4rem; }
+    .kicker { background: rgba(6, 14, 32, 0.45); color: #fff; border: 1px solid rgba(180, 210, 255, 0.2); }
+    .pill { background: rgba(22, 163, 74, 0.75); }
+    .pill.menu { background: rgba(37, 99, 235, 0.78); }
+    .pill.later { background: rgba(217, 119, 6, 0.78); }
+    .pill.stop { background: rgba(71, 85, 105, 0.9); }
+    .step { display: inline-grid; place-items: center; min-width: 1.15rem; height: 1.15rem; border-radius: 50%; background: rgba(255,255,255,0.14); font-size: 0.68rem; font-weight: 800; margin-right: 0.25rem; }
+    .device strong { display: block; margin-top: 0.4rem; font-size: 0.98rem; letter-spacing: -0.02em; }
+    .device em, .device small, .device .live, .device .cut { display: block; font-style: normal; }
+    .device em { margin-top: 0.12rem; font-size: 0.78rem; color: rgba(255,255,255,0.82); }
+    .device small { margin-top: 0.08rem; font-size: 0.72rem; color: rgba(255,255,255,0.7); }
+    .device .live { margin-top: 0.38rem; font-size: 0.7rem; line-height: 1.35; color: #d8ffe9; }
+    .device .cut { margin-top: 0.22rem; font-size: 0.7rem; line-height: 1.35; color: #fde68a; }
+    .kind-boot { box-shadow: inset 3px 0 0 #7cb0ff, 0 12px 32px rgba(0, 0, 0, 0.22); }
+    .kind-menu { box-shadow: inset 3px 0 0 #a3e635, 0 12px 32px rgba(0, 0, 0, 0.22); }
+    .kind-fallback { box-shadow: inset 3px 0 0 #f43f5e, 0 12px 32px rgba(0, 0, 0, 0.22); }
+    .kind-install { box-shadow: inset 3px 0 0 #fbbf24, 0 12px 32px rgba(0, 0, 0, 0.22); }
+    .kind-later { box-shadow: inset 3px 0 0 #fb7185, 0 12px 32px rgba(0, 0, 0, 0.22); }
+    .kind-hire { box-shadow: inset 3px 0 0 #c4b5fd, 0 12px 32px rgba(0, 0, 0, 0.22); }
+    .stack { display: flex; flex-direction: column; align-items: center; }
+    .stack > .arrow { transform: rotate(90deg); margin: 0.15rem 0; }
+    .fork { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
+    .fork .col { border: 1px solid var(--line); border-radius: 0.9rem; padding: 0.75rem 0.7rem 0.9rem; background: rgba(8, 18, 42, 0.35); }
+    .fork h3 { margin: 0 0 0.7rem; text-align: center; font-size: 1rem; }
+    .fork h3 span { display: block; color: var(--muted); font-size: 0.75rem; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; }
+    @media (max-width: 800px) { .fork { grid-template-columns: 1fr; } }
+    .detail { margin-top: 0.4rem; border: 1px solid var(--line); border-radius: 0.85rem; background: rgba(8, 18, 42, 0.92); padding: 0.85rem 1rem; }
+    .hint { margin: 0; color: var(--muted); }
+    .sheet { display: none; }
+    .sheet.active { display: block; }
+    .sheet h2 { margin: 0 0 0.35rem; font-size: 1.2rem; letter-spacing: -0.03em; }
+    .sheet p { margin: 0.25rem 0 0; max-width: 68rem; color: #d5deea; }
+    code { font-family: ui-monospace, "Cascadia Code", monospace; font-size: 0.86em; }
+    @media (max-width: 980px) {
+      .workspace { grid-template-columns: 1fr; }
+      aside { position: static; min-height: 0; border-right: 0; border-bottom: 1px solid var(--line); }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="top">
+      <div>
+        <h1>Imaging topology</h1>
+        <p>Read from top to bottom. Windows and Ubuntu sit side by side where the work differs. Checked on the depot 2 Nov 2026.</p>
+      </div>
+      <div class="top-actions">
+        <a class="ghost" href="../../patrick-current-projects.html">Maintenance map</a>
+        <a class="ghost" href="deployment.html">Plan</a>
+      </div>
+    </header>
+    <div class="workspace">
+      <aside>
+        <section class="panel">
+          <h2>How to read this</h2>
+          <p>Follow the arrows down. One column is shared. Where the install differs, Windows is on the left and Ubuntu is on the right. They meet again for the new-hire group.</p>
+        </section>
+        <section class="panel">
+          <h2>Legend</h2>
+          <ul class="legend">
+            <li><i class="swatch" style="background:#1d4ed8"></i> Boot — already running</li>
+            <li><i class="swatch" style="background:#a3e635"></i> Menu — graphical, then simple</li>
+            <li><i class="swatch" style="background:#f43f5e"></i> Fallback — text, if GRUB never starts</li>
+            <li><i class="swatch" style="background:#b45309"></i> Install — Windows, already running</li>
+            <li><i class="swatch" style="background:#fb7185"></i> Later — Ubuntu and Entra</li>
+            <li><i class="swatch" style="background:#c4b5fd"></i> After imaging — new-hire group, then one day</li>
+          </ul>
+        </section>
+      </aside>
+      <main>
+        <section class="lane" aria-labelledby="boot">
+          <h2 id="boot"><span class="num">1</span> <b>Shared</b> boot, menu, and assign</h2>
+          <div class="stack">
+            <button type="button" class="device kind-boot" data-show="lap"><span class="rowline"><span class="kicker">Boot</span><span class="pill">Running</span></span><strong><span class="step">1</span>Laptop</strong><em>UEFI network boot</em><small>Imaging VLAN</small><span class="live">The tech picks PXE IPv4. Power stays on.</span></button>
+            <span class="arrow" aria-hidden="true">→</span>
+            <button type="button" class="device kind-boot" data-show="dhcp"><span class="rowline"><span class="kicker">Boot</span><span class="pill">Running</span></span><strong><span class="step">2</span>VLAN DHCP</strong><em>Boot file offer</em><small>192.168.26.106</small><span class="live">File is snponly.efi. DHCP is not on the opsi host.</span></button>
+            <span class="arrow" aria-hidden="true">→</span>
+            <button type="button" class="device kind-boot" data-show="tftp"><span class="rowline"><span class="kicker">Boot</span><span class="pill">Running</span></span><strong><span class="step">3</span>TFTP</strong><em>Sends the boot file</em><small>UDP 69</small><span class="live">Serves snponly.efi.</span></button>
+            <span class="arrow" aria-hidden="true">→</span>
+            <button type="button" class="device kind-boot" data-show="ipxe"><span class="rowline"><span class="kicker">Boot</span><span class="pill">Running</span></span><strong><span class="step">4</span>default.ipxe</strong><em>First script</em><small>No menu today</small><span class="cut">Next change: chainload GRUB instead of arming Windows.</span></button>
+            <span class="arrow" aria-hidden="true">→</span>
+            <button type="button" class="device kind-menu" data-show="grub"><span class="rowline"><span class="kicker">Menu</span><span class="pill menu">Menu</span></span><strong><span class="step">5</span>grub.x64.efi</strong><em>Graphical binary</em><small>Theme inside the EFI</small><span class="cut">One L15 has to chainload this first.</span></button>
+            <span class="arrow" aria-hidden="true">→</span>
+            <button type="button" class="device kind-menu" data-show="picture"><span class="rowline"><span class="kicker">Menu</span><span class="pill menu">Menu</span></span><strong><span class="step">6</span>grub.cfg</strong><em>The picture</em><small>1280×720, then smaller</small><span class="cut">Waits for a key. Opens the assign screen.</span></button>
+          </div>
+          <div class="fork" style="margin-top:0.8rem">
+            <div class="col">
+              <h3>If the picture fails <span>same menu, text only</span></h3>
+              <div class="stack">
+                <button type="button" class="device kind-menu" data-show="simple"><span class="rowline"><span class="kicker">Menu</span><span class="pill menu">Esc</span></span><strong>grub-simple.cfg</strong><em>Text GRUB</em><small>No theme, no timeout</small><span class="live">Same choices as the picture.</span></button>
+              </div>
+            </div>
+            <div class="col">
+              <h3>If GRUB never starts <span>Lenovo L15 last resort</span></h3>
+              <div class="stack">
+                <button type="button" class="device kind-fallback" data-show="text"><span class="rowline"><span class="kicker">Fallback</span><span class="pill menu">Text</span></span><strong>iPXE text</strong><em>Plain menu</em><small>Same choices</small><span class="live">Simple GRUB cannot run if the EFI is refused.</span></button>
+              </div>
+            </div>
+          </div>
+          <div class="stack" style="margin-top:0.8rem">
+            <button type="button" class="device kind-menu" data-show="disk"><span class="rowline"><span class="kicker">Menu</span><span class="pill stop">Stops</span></span><strong>Local disk</strong><em>Or boot what is installed</em><small>This path ends</small><span class="live">Nothing is enrolled and nothing is wiped.</span></button>
+          </div>
+          <div class="drop"><i>↓</i> Assign continues. The local-disk choice does not.</div>
+          <div class="stack">
+            <button type="button" class="device kind-menu" data-show="find"><span class="rowline"><span class="kicker">Assign</span><span class="pill menu">Menu</span></span><strong><span class="step">7</span>Find the person</strong><em>Search Entra</em><small>Name or email</small><span class="live">The tech searches. The employee does not sign in here.</span></button>
+            <span class="arrow" aria-hidden="true">→</span>
+            <button type="button" class="device kind-menu" data-show="desk"><span class="rowline"><span class="kicker">Assign</span><span class="pill menu">Menu</span></span><strong><span class="step">8</span>Old laptop</strong><em>NextDesk snapshot</em><small>Their previous machine</small><span class="live">Read the software that was on it. No snapshot means an empty list.</span></button>
+            <span class="arrow" aria-hidden="true">→</span>
+            <button type="button" class="device kind-install" data-show="now"><span class="rowline"><span class="kicker">Assign</span><span class="pill">During</span></span><strong><span class="step">9</span>Install now</strong><em>Software for the image</em><small>Selection file</small><span class="live">Apps that make sense before login go into the file both installers read.</span></button>
+            <span class="arrow" aria-hidden="true">→</span>
+            <button type="button" class="device kind-later" data-show="queue"><span class="rowline"><span class="kicker">Endpoint</span><span class="pill later">After sign-in</span></span><strong><span class="step">10</span>Queue the rest</strong><em>Not during imaging</em><small>After they sign in</small><span class="live">The same queue for either OS. It does not run inside the installer.</span></button>
+          </div>
+        </section>
+        <div class="drop"><i>↓</i> Next the paths split. The selection file is already written.</div>
+
+        <section class="lane" aria-labelledby="split">
+          <h2 id="split"><span class="num">2</span> <b>Install</b> Windows on the left, Ubuntu on the right</h2>
+          <div class="fork">
+            <div class="col">
+              <h3>Windows 11 <span>the path that already runs</span></h3>
+              <div class="stack">
+                <button type="button" class="device kind-install" data-show="wipxe"><span class="rowline"><span class="kicker">Windows</span><span class="pill">Running</span></span><strong>win11.ipxe</strong><em>Second iPXE file</em><small>Not default.ipxe</small></button>
+                <span class="arrow" aria-hidden="true">→</span>
+                <button type="button" class="device kind-install" data-show="enroll"><span class="rowline"><span class="kicker">Windows</span><span class="pill">Running</span></span><strong>Auto-enroll</strong><em>NL-serial</em><small>:8080</small><span class="live">Arms win11-x64 and the lab products.</span></button>
+                <span class="arrow" aria-hidden="true">→</span>
+                <button type="button" class="device kind-install" data-show="boot"><span class="rowline"><span class="kicker">Windows</span><span class="pill">Running</span></span><strong>Boot image</strong><em>Kernel and initrd</em><small>Stages Windows</small></button>
+                <span class="arrow" aria-hidden="true">→</span>
+                <button type="button" class="device kind-install" data-show="rpc"><span class="rowline"><span class="kicker">Windows</span><span class="pill">Running</span></span><strong>opsiconfd</strong><em>4.3.53.10</em><small>TCP 4447</small></button>
+                <span class="arrow" aria-hidden="true">→</span>
+                <button type="button" class="device kind-install" data-show="depot"><span class="rowline"><span class="kicker">Windows</span><span class="pill">Running</span></span><strong>win11-x64</strong><em>Depot product</em><small>8.6 GB</small><span class="live">Install-now rows become product actions.</span></button>
+                <span class="arrow" aria-hidden="true">→</span>
+                <button type="button" class="device kind-install" data-show="winpe"><span class="rowline"><span class="kicker">Windows</span><span class="pill">Running</span></span><strong>WinPE</strong><em>Unattended setup</em></button>
+                <span class="arrow" aria-hidden="true">→</span>
+                <button type="button" class="device kind-install" data-show="spec"><span class="rowline"><span class="kicker">Windows</span><span class="pill">Running</span></span><strong>Specialize</strong><em>DHCP, Wi-Fi, Entra</em><small>NextAdmin</small></button>
+                <span class="arrow" aria-hidden="true">→</span>
+                <button type="button" class="device kind-install" data-show="post"><span class="rowline"><span class="kicker">Windows</span><span class="pill">Running</span></span><strong>postinst.d</strong><em>First logon scripts</em><small>Apps, agents, handoff</small></button>
+                <span class="arrow" aria-hidden="true">→</span>
+                <button type="button" class="device kind-install" data-show="user"><span class="rowline"><span class="kicker">Windows</span><span class="pill">Running</span></span><strong>Work sign-in</strong><em>Employee account</em><small>Not the tech</small></button>
+              </div>
+            </div>
+            <div class="col">
+              <h3>Ubuntu 26.04 <span>not running yet</span></h3>
+              <div class="stack">
+                <button type="button" class="device kind-later" data-show="ubuntu"><span class="rowline"><span class="kicker">Ubuntu</span><span class="pill later">Later</span></span><strong>Desktop ISO</strong><em>NoCloud seed</em><small>Not the paid agent</small><span class="live">No ISO on the depot yet. The seed still fails gate 0.</span></button>
+                <span class="arrow" aria-hidden="true">→</span>
+                <button type="button" class="device kind-later" data-show="auto"><span class="rowline"><span class="kicker">Ubuntu</span><span class="pill later">Later</span></span><strong>Autoinstall</strong><em>No second prompt</em><small>Disk layout from the seed</small></button>
+                <span class="arrow" aria-hidden="true">→</span>
+                <button type="button" class="device kind-later" data-show="encrypt"><span class="rowline"><span class="kicker">Ubuntu</span><span class="pill later">Later</span></span><strong>Encrypt /home</strong><em>LUKS and TPM</em><small>Recovery slot</small><span class="live">Windows does not do this step.</span></button>
+                <span class="arrow" aria-hidden="true">→</span>
+                <button type="button" class="device kind-later" data-show="ubuauth"><span class="rowline"><span class="kicker">Ubuntu</span><span class="pill later">Later</span></span><strong>authd</strong><em>UbuntuOauth</em><small>ALL users, empty owner</small><span class="live">No client secret on the laptop.</span></button>
+                <span class="arrow" aria-hidden="true">→</span>
+                <button type="button" class="device kind-later" data-show="ubuapps"><span class="rowline"><span class="kicker">Ubuntu</span><span class="pill later">Later</span></span><strong>Install-now apps</strong><em>From the selection file</em><small>Dock, Teams, Outlook, OneDrive</small></button>
+                <span class="arrow" aria-hidden="true">→</span>
+                <button type="button" class="device kind-later" data-show="ubusign"><span class="rowline"><span class="kicker">Ubuntu</span><span class="pill later">Later</span></span><strong>Employee sign-in</strong><em>Entra password</em><small>Writes LUKS slot 0</small><span class="live">A QR login does not reveal that password.</span></button>
+              </div>
+            </div>
+          </div>
+        </section>
+        <div class="drop"><i>↓</i> Both paths meet here after the image succeeds.</div>
+
+        <section class="lane" aria-labelledby="after">
+          <h2 id="after"><span class="num">3</span> <b>After imaging</b> same group, different join</h2>
+          <div class="stack">
+            <button type="button" class="device kind-hire" data-show="hire"><span class="rowline"><span class="kicker">Entra</span><span class="pill later">After</span></span><strong>New-hire group</strong><em>Add the employee</em><small>Not a linux- group</small><span class="live">Only this group may join a device.</span></button>
+          </div>
+          <div class="fork" style="margin-top:0.8rem">
+            <div class="col">
+              <h3>Windows join <span>their sign-in</span></h3>
+              <div class="stack">
+                <button type="button" class="device kind-hire" data-show="joinwin"><span class="rowline"><span class="kicker">Windows</span><span class="pill later">After</span></span><strong>Entra join</strong><em>While they are in the group</em><small>user@domain and MFA</small><span class="live">Specialize may already have bulk-joined the device. This sign-in is the employee’s.</span></button>
+              </div>
+            </div>
+            <div class="col">
+              <h3>Ubuntu join <span>their sign-in</span></h3>
+              <div class="stack">
+                <button type="button" class="device kind-hire" data-show="joinubu"><span class="rowline"><span class="kicker">Ubuntu</span><span class="pill later">After</span></span><strong>Device register</strong><em>authd register_device</em><small>Same group, same day</small><span class="live">This login registers the device. It does not make them the only owner.</span></button>
+              </div>
+            </div>
+          </div>
+          <div class="stack" style="margin-top:0.8rem">
+            <span class="arrow" aria-hidden="true">→</span>
+            <button type="button" class="device kind-hire" data-show="kick"><span class="rowline"><span class="kicker">Entra</span><span class="pill stop">One day</span></span><strong>Leave the group</strong><em>24 hours after the add</em><small>Both operating systems</small><span class="live">The laptop stays joined. They stay signed in.</span><span class="cut">They cannot join another device.</span></button>
+          </div>
+        </section>
+
+        <div class="detail" id="detail">
+          <p class="hint" id="hint">Select a card for the detail.</p>
+          <article class="sheet" id="lap"><h2>1 · Laptop</h2><p>The tech plugs into the imaging VLAN, leaves power connected, and chooses UEFI PXE. Next is VLAN DHCP.</p></article>
+          <article class="sheet" id="dhcp"><h2>2 · VLAN DHCP</h2><p>The offer is next server <code>192.168.26.106</code> and file <code>snponly.efi</code>. That file is what a Lenovo L15 can load. DHCP is not on the opsi host. Next is TFTP.</p></article>
+          <article class="sheet" id="tftp"><h2>3 · TFTP</h2><p>The opsi container listens on UDP 69 and serves <code>snponly.efi</code>. Next is <code>default.ipxe</code>.</p></article>
+          <article class="sheet" id="ipxe"><h2>4 · default.ipxe</h2><p>Today this script enrolls the laptop and arms Windows. The next change is to chainload <code>grub.x64.efi</code> instead. If that file does not start, the text menu is next.</p></article>
+          <article class="sheet" id="grub"><h2>5 · grub.x64.efi</h2><p>The graphical binary. The theme lives inside it. Next is <code>grub.cfg</code>. If the firmware refuses this file, next is the iPXE text menu, not the simple GRUB menu.</p></article>
+          <article class="sheet" id="picture"><h2>6 · grub.cfg</h2><p>Tries 1280×720, then 1024×768, then auto. The menu waits for a key. Next on Esc, or when graphics fail, is <code>grub-simple.cfg</code>. Otherwise the tech picks a row 3 choice. A per-MAC file that waits 0 seconds must not open first.</p></article>
+          <article class="sheet" id="simple"><h2>Simple GRUB</h2><p>Text only. Same choices as the picture. It is next when the font fails, when gfxterm refuses, and when the tech presses Esc on a black screen.</p></article>
+          <article class="sheet" id="text"><h2>iPXE text</h2><p>Plain type, same choices. It is next only when <code>grub.x64.efi</code> never starts. That is the L15 case until one L15 passes the chainload.</p></article>
+          <article class="sheet" id="disk"><h2>Local disk</h2><p>GRUB chainloads the EFI already on the disk. The path stops. Nothing is enrolled.</p></article>
+          <article class="sheet" id="win"><h2>7 · Windows 11</h2><p>The choice that continues. Next is <code>win11.ipxe</code> on row 4. It must not return to <code>default.ipxe</code>.</p></article>
+          <article class="sheet" id="ubuntu"><h2>Ubuntu 26.04</h2><p>Shown on the menu and returns to row 3. The seed still has a plaintext password, the root volume has 4.8 GB free, and nothing is listening for the NoCloud files.</p></article>
+          <article class="sheet" id="signin"><h2>Sign in to image</h2><p>The graphical menu opens this screen. The tech signs in once. Next is the Entra search, the NextDesk snapshot, and the split between software that installs now and software the endpoint queues for after the employee signs in.</p></article>
+          <article class="sheet" id="find"><h2>Find the person</h2><p>Search Entra by name or email and assign that account to this laptop. The employee does not sign in on this screen. The tech’s token is not their laptop login.</p></article>
+          <article class="sheet" id="desk"><h2>Old laptop</h2><p>NextDesk holds the snapshot of their previous machine. The screen pulls that snapshot and lists the software that was on it. A person with no snapshot gets an empty list. The OS choice and Deploy still work.</p></article>
+          <article class="sheet" id="now"><h2>Install now</h2><p>From that list, software that makes sense before anyone logs in, and that matches a package the installer can lay down, goes into the selection file. Windows turns matching rows into opsi product actions. Ubuntu installs them from the same file during the image.</p></article>
+          <article class="sheet" id="queue"><h2>Queue the rest</h2><p>Everything else from the snapshot is handed to the endpoint queue. It installs after the employee signs in. It does not run inside WinPE or the Ubuntu installer.</p></article>
+          <article class="sheet" id="wipxe"><h2>8 · win11.ipxe</h2><p>A second iPXE file whose only job is the auto-enroll URL. Next is auto-enroll.</p></article>
+          <article class="sheet" id="enroll"><h2>9 · Auto-enroll</h2><p>Port 8080 creates <code>NL-&lt;serial&gt;.lab.local</code> and arms <code>win11-x64</code> plus the client agent, identity, inventory, audits, Chrome bookmarks, and the start menu. Next is the boot image.</p></article>
+          <article class="sheet" id="boot"><h2>10 · Boot image</h2><p>Kernel and initrd over HTTP. It partitions the disk and stages Windows. Next is opsiconfd.</p></article>
+          <article class="sheet" id="rpc"><h2>11 · opsiconfd</h2><p><code>4.3.53.10</code> on TCP 4447. Next is the <code>win11-x64</code> product on the depot.</p></article>
+          <article class="sheet" id="depot"><h2>12 · win11-x64</h2><p>The Windows product, about 8.6 GB. There is no Ubuntu product. The paid Linux agent is present and unused. Next is WinPE.</p></article>
+          <article class="sheet" id="winpe"><h2>13 · WinPE</h2><p>Unattended Windows Setup. Next is specialize, on the first boot into Windows.</p></article>
+          <article class="sheet" id="spec"><h2>14 · Specialize</h2><p>DHCP, Wi-Fi, firewall, OOBE policy, and Entra join. NextAdmin is the local setup account. Next is <code>postinst.d</code>.</p></article>
+          <article class="sheet" id="post"><h2>15 · postinst.d</h2><p>Debloat, Atera, Wazuh, UniFi, core apps, OneDrive, the start menu, hide NextAdmin, and handoff. Next is the employee’s work sign-in.</p></article>
+          <article class="sheet" id="user"><h2>16 · Work sign-in</h2><p>The employee signs in with a work account. Inventory and bookmarks follow from the client agent. Next, after the image succeeds, is the new-hire group.</p></article>
+          <article class="sheet" id="hire"><h2>17 · New-hire group</h2><p>Entra device settings allow only this security group to join a device. The name does not start with <code>linux-</code>, so authd does not make it a local group. The employee is added when the laptop is assigned. <code>linux-sudo</code> is a different group and is not involved.</p></article>
+          <article class="sheet" id="join"><h2>18 · Device join</h2><p>The employee signs in while they are still in the group. That sign-in joins the device. On Ubuntu this is the authd login that runs <code>register_device</code>. On Windows it is the Entra join. <code>allowed_users = ALL</code> and an empty owner mean this login does not lock the laptop to one person.</p></article>
+
+          <article class="sheet" id="auto"><h2>Ubuntu autoinstall</h2><p>The desktop ISO boots with the NoCloud seed. Disk layout comes from the seed. The tech is not asked for a password. This step does not exist on the Windows path.</p></article>
+          <article class="sheet" id="encrypt"><h2>Encrypt /home</h2><p>LUKS on the home volume, TPM seal, and a recovery slot. Windows imaging does not encrypt the disk in this plan. The employee’s later Entra password can be written to slot 0 only if they typed it.</p></article>
+          <article class="sheet" id="ubuauth"><h2>authd</h2><p>UbuntuOauth tenant and client id. <code>allowed_users = ALL</code> and an empty owner. No client secret on the laptop. The new-hire group is what allows the device join, and it is not named <code>linux-</code>.</p></article>
+          <article class="sheet" id="ubuapps"><h2>Ubuntu install-now apps</h2><p>The same selection file Windows uses. Packages that belong in the image install here: dock, Teams, Outlook, and the OneDrive package. The endpoint queue still holds the rest until after sign-in.</p></article>
+          <article class="sheet" id="ubusign"><h2>Ubuntu employee sign-in</h2><p>They type <code>user@domain</code> and the Entra password. That password can open the disk slot. A QR login does not reveal it. This is their sign-in, not the tech’s.</p></article>
+          <article class="sheet" id="joinwin"><h2>Windows Entra join</h2><p>The employee signs in while they are in the new-hire group. That is the Windows join. Removing them from the group a day later does not unjoin the device.</p></article>
+          <article class="sheet" id="joinubu"><h2>Ubuntu device register</h2><p>The employee’s authd login runs <code>register_device</code> while they are in the new-hire group. <code>allowed_users = ALL</code> keeps the laptop from locking to one owner. A day later they leave the group and the registration stays.</p></article>
+          <article class="sheet" id="kick"><h2>19 · Leave the group</h2><p>The membership ends 24 hours after the add. A daily job removes anyone older than a day if the assignment has no end time. The device stays joined. The person stays signed in. They cannot join another device.</p></article>
+        </div>
+      </main>
+    </div>
+  </div>
+  <script>
+    var devices = Array.prototype.slice.call(document.querySelectorAll(".device"));
+    var sheets = Array.prototype.slice.call(document.querySelectorAll(".sheet"));
+    var hint = document.getElementById("hint");
+    devices.forEach(function (item) {
+      item.addEventListener("click", function () {
+        var id = item.getAttribute("data-show");
+        devices.forEach(function (other) {
+          other.setAttribute("aria-current", other === item ? "true" : "false");
+        });
+        sheets.forEach(function (sheet) { sheet.classList.toggle("active", sheet.id === id); });
+        hint.hidden = true;
+        document.getElementById(id).scrollIntoView({ block: "nearest" });
+      });
+    });
+  </script>
+</body>
+</html>

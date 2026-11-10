@@ -16,58 +16,65 @@
 
 autoinstall:
   version: 1
+  # Every answered section stays non-interactive. An empty list means
+  # the installer must not stop on language, keyboard, disk, or account.
+  interactive-sections: []
 
-  # Refresh installer snap for 26.04
+  # Refresh the installer snap from the stable channel.
   refresh-installer:
-    update: true
-    channel: stable/ubuntu-$REL
+    update: false
 
   # Desktop minimal — adjust id per casper/install-sources.yaml on your ISO
   source:
     id: ubuntu-desktop-minimal
-    search_drivers: true
+    search_drivers: false
 
   locale: en_US.UTF-8
   keyboard:
     layout: us
 
-  # Network: DHCP; make interactive if you want techs to pick Wi-Fi
-  network:
-    version: 2
-    ethernets:
-      all-en:
-        match:
-          name: "en*"
-        dhcp4: true
-      all-eth:
-        match:
-          name: "eth*"
-        dhcp4: true
+  # No network: section. This installer root is NFS. A network section makes
+  # Subiquity run netplan apply, which stops NetworkManager. The root
+  # filesystem is that NIC, so the installer deadlocks at
+  # Drivers/_list_drivers/wait_apt and never reaches APT_CONFIGURED.
+  # The live system keeps the DHCP address it already has. The first
+  # late-command writes ethernet DHCP onto the installed disk.
 
   # CRITICAL: create uid-1000 user during install (wizard auto-detects this user).
   # Do NOT leave identity blank — GDM first-login wizard fights our encryption wizard.
   identity:
     hostname: ubuntu-laptop
-    username: user
-    password: "ChangeMeOnFirstLogin!"   # user should change via passwd after imaging test
+    # uid 1000. The wizard binds LUKS keyslot 0 to this account.
+    # Rename the account before the first-boot wizard runs, not after.
+    username: nextadmin
+    # imaging/build-imaging-seed.sh replaces this and writes
+    # imaging/seed/TECH-PASSWORD.txt (mode 600). The user replaces it in the
+    # wizard ("I was given a temporary password").
+    password: "__TEMP_PASSWORD__"
 
   # Leave ≥50 GB unallocated at end of largest disk for encrypted /home (script 01).
-  # Adjust root size for your fleet; smaller root = more free space for /home.
+  # 40 GB root fits a 256 GB laptop: about 20 GB holds the desktop, the rest
+  # of the drive (about 197 GB) becomes encrypted /home, including Timeshift.
   storage:
     config:
       - type: disk
         id: disk0
+        ptable: gpt
+        wipe: superblock-recursive
+        preserve: false
+        grub_device: true
         match:
           size: largest
       - type: partition
         id: partition-efi
         device: disk0
         size: 1G
-        flag: esp
+        flag: boot
+        grub_device: true
       - type: partition
         id: partition-root
         device: disk0
-        size: 100G
+        size: 40G
       - type: format
         id: fmt-efi
         fstype: fat32
@@ -77,9 +84,11 @@ autoinstall:
         fstype: ext4
         volume: partition-root
       - type: mount
+        id: mount-efi
         device: fmt-efi
         path: /boot/efi
       - type: mount
+        id: mount-root
         device: fmt-root
         path: /
 
@@ -94,15 +103,22 @@ autoinstall:
     - tpm2-tools
     - mokutil
     - pamtester
-    - chromium-browser
+    - timeshift
+    - authd
 
+  apt:
+    geoip: false
+    fallback: offline-install
+  early-commands:
+    - ["bash", "-c", "install -d /etc/apt/apt.conf.d; printf '%s\\n' 'Acquire::http::Timeout \"15\";' 'Acquire::https::Timeout \"15\";' 'Acquire::Retries \"0\";' > /etc/apt/apt.conf.d/99nextlink-timeout"]
   updates: security
 
-  # Copy bundled artifact from USB, then install wizard inside target system
+  # Fetch the encryption files from the opsi host. USB is the backup.
   late-commands:
+    - ["bash", "-c", "mkdir -p /target/etc/netplan && printf '%s\\n' 'network:' '  version: 2' '  renderer: NetworkManager' '  ethernets:' '    all-en:' '      match:' '        name: \"en*\"' '      dhcp4: true' '      optional: true' '    all-eth:' '      match:' '        name: \"eth*\"' '      dhcp4: true' '      optional: true' > /target/etc/netplan/90-nextlink-ethernet.yaml && chmod 600 /target/etc/netplan/90-nextlink-ethernet.yaml && rm -f /target/etc/netplan/00-installer-config.yaml"]
     - ["bash", "-c", "mkdir -p /target/opt"]
-    - ["bash", "-c", "ART=''; for p in /cdrom/nocloud/extras/linux-encryption-setup.tar.gz /cdrom/extras/linux-encryption-setup.tar.gz /mnt/nocloud/extras/linux-encryption-setup.tar.gz; do [ -f \"$p\" ] && ART=\"$p\" && break; done; [ -n \"$ART\" ] || { echo 'Missing linux-encryption-setup.tar.gz on USB'; exit 1; }; cp \"$ART\" /target/opt/linux-encryption-setup.tar.gz"]
-    - ["bash", "-c", "SCRIPT=''; for p in /cdrom/nocloud/extras/late-install-linux-encryption.sh /cdrom/extras/late-install-linux-encryption.sh; do [ -f \"$p\" ] && SCRIPT=\"$p\" && break; done; [ -n \"$SCRIPT\" ] || { echo 'Missing late-install-linux-encryption.sh on USB'; exit 1; }; cp \"$SCRIPT\" /target/opt/late-install-linux-encryption.sh; chmod 755 /target/opt/late-install-linux-encryption.sh"]
+    - ["bash", "-c", "BASE=http://192.168.26.106:8090/nocloud/extras; get() { curl -fsSL \"$1\" -o \"$2\" 2>/dev/null || wget -q -O \"$2\" \"$1\"; }; if ! get \"$BASE/linux-encryption-setup.tar.gz\" /target/opt/linux-encryption-setup.tar.gz; then ART=''; for p in /cdrom/nocloud/extras/linux-encryption-setup.tar.gz /cdrom/extras/linux-encryption-setup.tar.gz /mnt/nocloud/extras/linux-encryption-setup.tar.gz; do [ -f \"$p\" ] && ART=\"$p\" && break; done; [ -n \"$ART\" ] || { echo 'Missing linux-encryption-setup.tar.gz'; exit 1; }; cp \"$ART\" /target/opt/linux-encryption-setup.tar.gz; fi"]
+    - ["bash", "-c", "BASE=http://192.168.26.106:8090/nocloud/extras; get() { curl -fsSL \"$1\" -o \"$2\" 2>/dev/null || wget -q -O \"$2\" \"$1\"; }; if ! get \"$BASE/late-install-linux-encryption.sh\" /target/opt/late-install-linux-encryption.sh; then SCRIPT=''; for p in /cdrom/nocloud/extras/late-install-linux-encryption.sh /cdrom/extras/late-install-linux-encryption.sh; do [ -f \"$p\" ] && SCRIPT=\"$p\" && break; done; [ -n \"$SCRIPT\" ] || { echo 'Missing late-install-linux-encryption.sh'; exit 1; }; cp \"$SCRIPT\" /target/opt/late-install-linux-encryption.sh; fi; chmod 755 /target/opt/late-install-linux-encryption.sh"]
     - ["curtin", "in-target", "--", "bash", "/opt/late-install-linux-encryption.sh"]
 
   shutdown: reboot

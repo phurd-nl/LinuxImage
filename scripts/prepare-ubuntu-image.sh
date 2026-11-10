@@ -24,6 +24,17 @@ bash "$here/deploy.sh"
 echo "== Installing encryption packages (pulled at runtime too) =="
 apt-get install -y gdisk cryptsetup clevis clevis-tpm2 tpm2-tools mokutil pamtester
 
+echo "== Applying laptop baseline (firewall, updates, no SSH) =="
+IMAGE_HARDEN_CONFIRM=1 bash "$here/harden-image-baseline.sh" --apply
+
+if [ -n "${ENTRA_TENANT_ID:-}" ] && [ -n "${ENTRA_CLIENT_ID:-}" ]; then
+  echo "== Enabling Entra ID login (authd) =="
+  IMAGE_HARDEN_CONFIRM=1 \
+    ENTRA_TENANT_ID="$ENTRA_TENANT_ID" \
+    ENTRA_CLIENT_ID="$ENTRA_CLIENT_ID" \
+    bash "$here/setup-entra-authd.sh" --apply
+fi
+
 # Mark image as needing first-boot encryption
 mkdir -p /var/lib/linux-encryption-setup
 echo "pending" > /var/lib/linux-encryption-setup/image-prepared
@@ -34,3 +45,4 @@ echo "  1. Capture this disk image the normal way."
 echo "  2. On first boot, users see the LUKS password box."
 echo "  3. They enter their Ubuntu login password — setup is automatic."
 echo "  4. Ensure the captured image has ~50 GB+ unallocated at end of boot disk."
+echo "  5. Baseline lockdown is already applied (firewall, no SSH, no Avahi/rpcbind/wsdd, Timeshift)."

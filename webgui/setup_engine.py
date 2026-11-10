@@ -106,7 +106,39 @@ def _store_recovery_passphrase(hostname: str, phrase: str) -> Path:
     return path
 
 
+def _stored_recovery_phrase() -> str | None:
+    path = STATE_DIR / "recovery-passphrase"
+    if not path.is_file():
+        return None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            return line
+    return None
+
+
+def _imaging_recovery():
+    path = REPO_ROOT / "scripts" / "recovery_passphrase.py"
+    if not path.is_file():
+        return None
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("recovery_passphrase", path)
+    if spec is None or spec.loader is None:
+        return None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def fetch_recovery_passphrase(hostname: str) -> str:
+    existing = _stored_recovery_phrase()
+    if existing:
+        return existing
+    tools = _imaging_recovery()
+    if tools is not None and tools.pull(STATE_DIR):
+        pulled = _stored_recovery_phrase()
+        if pulled:
+            return pulled
     if ANSIBLE_API_URL:
         url = f"{ANSIBLE_API_URL}/api/v1/machines/{hostname}/luks-recovery-passphrase"
         payload = json.dumps({"hostname": hostname}).encode()
@@ -119,8 +151,15 @@ def fetch_recovery_passphrase(hostname: str) -> str:
         # Still mirror locally so offline recovery works if Ansible is unreachable later.
         _store_recovery_passphrase(hostname, phrase)
         return phrase
-    # No Ansible: generate cryptographically strong phrase and keep a root-only copy.
+    # No Ansible and no phrase from the imaging host: generate one and file it.
     phrase = secrets.token_urlsafe(48)
+    if tools is not None and tools.push_phrase(phrase):
+        _store_recovery_passphrase(hostname, phrase)
+        marker = STATE_DIR / "recovery-filed"
+        marker.write_text("host\n")
+        os.chmod(marker, 0o600)
+        print(f"recovery passphrase filed on the imaging host for {hostname}", flush=True)
+        return phrase
     push_url = os.environ.get("ANSIBLE_PUSH_URL", "").rstrip("/")
     if push_url:
         payload = json.dumps({"hostname": hostname, "passphrase": phrase}).encode()
@@ -231,7 +270,30 @@ def _launch_orchestrator(*, login: str | None = None, recovery: str | None = Non
     threading.Thread(target=_wait, daemon=True).start()
 
 
-def start_setup(password: str) -> dict[str, Any]:
+def _change_password(username: str, new_password: str) -> None:
+    """Tech-built laptop: replace the temporary login password with the user's own.
+
+    Runs as root, so chpasswd bypasses PAM pwquality — the API enforces min
+    length 8. The new password then flows into keyslot 0; the PAM sync hook
+    keeps login/LUKS aligned on future changes.
+    """
+    proc = _run(["chpasswd"], input=f"{username}:{new_password}\n", timeout=15)
+    if proc.returncode != 0:
+        raise RuntimeError(f"Password change failed: {(proc.stderr or '').strip() or 'chpasswd error'}")
+    # The GNOME keyring was created at the tech's login with the temp password;
+    # left alone it prompts the user for a password they never chose. This path
+    # only runs on fresh builds, where the keyring holds nothing worth keeping.
+    import pwd
+    import shutil
+    try:
+        keyrings = Path(pwd.getpwnam(username).pw_dir) / ".local/share/keyrings"
+        if keyrings.is_dir():
+            shutil.rmtree(keyrings)
+    except (KeyError, OSError):
+        pass
+
+
+def start_setup(password: str, new_password: str | None = None) -> dict[str, Any]:
     if is_running():
         raise RuntimeError("Setup already running")
     if is_complete():
@@ -244,6 +306,9 @@ def start_setup(password: str) -> dict[str, Any]:
         raise RuntimeError("; ".join(hw.get("blockers") or ["Machine not ready for setup"]))
     if not verify_login_password(hw["username"], password):
         raise RuntimeError("Password incorrect — enter your Ubuntu login password")
+    if new_password:
+        _change_password(hw["username"], new_password)
+        password = new_password  # keyslot 0 gets the password the user chose
 
     apply_config(hw)
     recovery = fetch_recovery_passphrase(hw.get("hostname", "unknown"))

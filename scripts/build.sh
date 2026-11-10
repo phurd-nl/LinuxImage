@@ -25,9 +25,23 @@ no(){ printf '  \033[31mFAIL\033[0m %s\n' "$*"; fail=$((fail+1)); }
 say() { echo ""; echo "== $* =="; }
 
 say "1. Bash syntax"
-for s in "$REPO"/scripts/*.sh; do
+for s in "$REPO"/scripts/*.sh "$REPO"/imaging/*.sh; do
   bash -n "$s" && ok "$(basename "$s")" || no "$(basename "$s")"
 done
+
+say "1b. Image baseline contract"
+bash "$REPO/scripts/test-harden-baseline.sh" && ok "harden-image-baseline" || no "harden-image-baseline"
+bash "$REPO/scripts/test-setup-timeshift.sh" && ok "setup-timeshift" || no "setup-timeshift"
+bash "$REPO/scripts/test-setup-entra-authd.sh" && ok "setup-entra-authd" || no "setup-entra-authd"
+bash "$REPO/scripts/test-luks-format.sh" && ok "luks-format" || no "luks-format"
+bash "$REPO/imaging/test-seed-password.sh" && ok "seed-password" || no "seed-password"
+if grep -q 'ChangeMeOnFirstLogin' "$REPO/imaging/ubuntu-26.04-desktop-autoinstall.yaml"; then
+  no "shared password still in autoinstall yaml"
+else
+  ok "no shared autoinstall password"
+fi
+grep -q '__TEMP_PASSWORD__' "$REPO/imaging/ubuntu-26.04-desktop-autoinstall.yaml" \
+  && ok "temp password placeholder" || no "temp password placeholder"
 
 say "2. Python syntax"
 python3 -m py_compile "$REPO/webgui/server.py" "$REPO/webgui/setup_engine.py" \
@@ -81,6 +95,10 @@ echo "$DETECT" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d.g
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://127.0.0.1:${PORT}/api/setup/start" \
   -H "Content-Type: application/json" -d '{"password":"definitely-wrong-build-test"}')
 [ "$CODE" = "400" ] && ok "POST /api/setup/start rejects bad password" || no "POST /api/setup/start (got HTTP $CODE, want 400)"
+# Temp-password flow: short new_password must be rejected server-side
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://127.0.0.1:${PORT}/api/setup/start" \
+  -H "Content-Type: application/json" -d '{"password":"temp-pw-test","new_password":"short"}')
+[ "$CODE" = "400" ] && ok "POST /api/setup/start rejects short new_password" || no "POST new_password (got HTTP $CODE, want 400)"
 kill "$PID" 2>/dev/null; PID=""; wait 2>/dev/null || true
 
 say "SUMMARY"
