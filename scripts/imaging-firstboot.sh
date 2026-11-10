@@ -70,7 +70,7 @@ elif [ -z "$key" ]; then
   problems+=("The disk recovery key could not be set (see /var/log/imaging-firstboot-recovery.log). Make one with snap-tpmctl or Security Center before handing the laptop out.")
 else
   for mac in $macs; do
-    body=$(python3 -c 'import json,sys; print(json.dumps({"mac": sys.argv[1], "passphrase": sys.argv[2]}))' "$mac" "$key")
+    body=$(python3 -c 'import json,sys; print(json.dumps({"mac": sys.argv[1], "passphrase": sys.argv[2], "serial": sys.argv[3]}))' "$mac" "$key" "$(dmi product_serial)")
     if curl -sf --max-time 20 -H 'Content-Type: application/json' -d "$body" "$HOST/api/recovery" | grep -q '"ok":true'; then
       escrowed=yes; touch "$FILED"; break
     fi

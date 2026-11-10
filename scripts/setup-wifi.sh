@@ -10,10 +10,12 @@ tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
 
 got=""
+# The serial matters on Dells whose network boot used a passthrough MAC that Ubuntu never sees.
+serial=$(tr -d '\n ' < /sys/class/dmi/id/product_serial 2>/dev/null)
 for addr in /sys/class/net/*/address; do
   mac=$(tr 'A-F' 'a-f' < "$addr" | tr -d '\r\n')
   case "$mac" in ""|00:00:00:00:00:00) continue ;; esac
-  if curl -fsS --max-time 20 -o "$tmp" "${HOST}/api/imaging-file?mac=${mac}&name=wifi"; then got=1; break; fi
+  if curl -fsS --max-time 20 -o "$tmp" "${HOST}/api/imaging-file?mac=${mac}&serial=${serial}&name=wifi"; then got=1; break; fi
 done
 if [ -z "$got" ]; then
   echo "[wifi] key not available for this laptop; Wi-Fi left for the employee"
