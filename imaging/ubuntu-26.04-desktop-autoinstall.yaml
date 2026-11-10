@@ -77,6 +77,11 @@ autoinstall:
   apt:
     geoip: false
     fallback: offline-install
+    # The installer's final "apt-get update" is fatal on any failed file. A mirror mid-sync
+    # failed a translation file on 10 Nov 2026; skip translations and retry downloads.
+    conf: |
+      Acquire::Languages "none";
+      Acquire::Retries "3";
   early-commands:
     - ["bash", "-c", "install -d /etc/apt/apt.conf.d; printf '%s\\n' 'Acquire::http::Timeout \"15\";' 'Acquire::https::Timeout \"15\";' 'Acquire::Retries \"0\";' > /etc/apt/apt.conf.d/99nextlink-timeout"]
   updates: security
