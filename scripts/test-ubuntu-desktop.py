@@ -31,6 +31,8 @@ def main() -> None:
     session = session_defaults()
     assert "report-technical-problems=false" in session
     assert "enabled=false" in session
+    assert "color-scheme='prefer-dark'" in session
+    assert "gtk-theme='Yaru-dark'" in session
     teams = desktop_file("Microsoft Teams", TEAMS_URL, "teams-pwa", TEAMS_ICON)
     outlook = desktop_file("Outlook", OUTLOOK_URL, "outlook-pwa", OUTLOOK_ICON)
     assert f"--app={TEAMS_URL}" in teams
@@ -62,6 +64,9 @@ def main() -> None:
         link = root / "etc/systemd/user/gnome-initial-setup-first-login.service"
         assert link.is_symlink()
         assert os.readlink(link) == "/dev/null"
+        # 26.04 runs a "Welcome to Ubuntu 26.04" wizard exactly when the done file above exists.
+        upgrade = root / "etc/systemd/user/gnome-initial-setup-upgrade-login.service"
+        assert upgrade.is_symlink() and os.readlink(upgrade) == "/dev/null"
         # GDM still launches Initial Setup when no user is visible. Masked, it fails and the panel stays blank.
         gdm = (root / "etc/gdm3/custom.conf").read_text()
         assert "[daemon]\nInitialSetupEnable=false\n" in gdm

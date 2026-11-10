@@ -48,6 +48,10 @@ def session_defaults() -> str:
         + "\n"
         + "[org/gnome/system/location]\n"
         + "enabled=false\n"
+        + "\n"
+        + "[org/gnome/desktop/interface]\n"
+        + "color-scheme='prefer-dark'\n"
+        + "gtk-theme='Yaru-dark'\n"
     )
 
 
@@ -105,7 +109,9 @@ def skip_new_laptop_questions(root) -> None:
 
     unit_dir = root / "etc/systemd/user"
     unit_dir.mkdir(parents=True, exist_ok=True)
-    for unit in ("gnome-initial-setup-first-login.service", "gnome-initial-setup.service"):
+    # upgrade-login is 26.04's "Welcome to Ubuntu" tour; it runs because the done file exists.
+    for unit in ("gnome-initial-setup-first-login.service", "gnome-initial-setup.service",
+                 "gnome-initial-setup-upgrade-login.service"):
         link = unit_dir / unit
         if link.is_symlink() or link.exists():
             link.unlink()
