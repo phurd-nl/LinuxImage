@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Imaging Recovery</title>
+  <style>
+    :root {
+      --background: #0b1020;
+      --surface: #141b2d;
+      --surface-muted: #1c253b;
+      --text: #e8eef9;
+      --muted: #c5d0e4;
+      --border: #31415f;
+      --accent: #93c5fd;
+      --warning: #fde68a;
+      --warning-soft: #78350f;
+      --positive: #bbf7d0;
+      --positive-soft: #14532d;
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--background); color: var(--text); font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; line-height: 1.5; }
+    body { margin: 0; }
+    a { color: var(--accent); }
+    .page { margin: 0 auto; max-width: 52rem; padding: 2rem 1.25rem 4rem; }
+    h1 { font-size: clamp(1.8rem, 4vw, 2.4rem); letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 0.6rem; }
+    h2 { font-size: 1.25rem; margin: 2.2rem 0 0.6rem; }
+    h3 { font-size: 1rem; margin: 1.4rem 0 0.4rem; color: var(--text); }
+    p, li { color: var(--muted); }
+    .lede { font-size: 1.05rem; }
+    .meta { color: var(--accent); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+    ol.steps { padding-left: 1.2rem; }
+    ol.steps li { margin: 0.7rem 0; }
+    ol.steps strong { color: var(--text); }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 0.75rem; padding: 0.9rem 1rem; margin: 1rem 0; }
+    .warn { background: var(--warning-soft); border-color: #92400e; }
+    .ok { background: var(--positive-soft); border-color: #166534; }
+    .warn p, .ok p { color: var(--text); margin: 0.35rem 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin: 0.75rem 0; }
+    th, td { text-align: left; padding: 0.45rem 0.55rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { color: var(--text); font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; }
+    code { font-family: ui-monospace, Consolas, monospace; font-size: 0.88em; }
+    pre { background: var(--surface-muted); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.7rem 0.85rem; overflow-x: auto; font-size: 0.85rem; line-height: 1.45; }
+    pre code { font-size: inherit; }
+    .wrap { overflow-x: auto; }
+    @media print { html { background: #fff; color: #111; } p, li, .lede { color: #222; } .card, pre { break-inside: avoid; } a { color: #134e9b; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <p class="meta">Imaging bench · recovery · current as of 10 November 2026</p>
+    <h1>Getting imaging back</h1>
+    <p class="lede">What to do when laptops stop imaging, from the fastest undo to rebuilding the imaging host. Commands run on the opsi host (<code>ssh opsi</code>, then <code>sudo -i</code>) unless they say MikroTik. The bench steps are the <a href="imaging-sop.html">imaging SOP</a>; the map is the <a href="imaging-topology.html">imaging topology</a>.</p>
+
+    <h2>Pick the right fix</h2>
+    <div class="wrap">
+    <table>
+      <thead><tr><th>What you see</th><th>Do this</th></tr></thead>
+      <tbody>
+        <tr><td>Laptops get no boot file, or stop before the form, since the 10 November change</td><td><a href="#fast">1. Back to the old boot path</a> (about 5 minutes)</td></tr>
+        <tr><td>The form works but one later step broke (reports, Windows postinst, Ubuntu seed, auto-enroll)</td><td><a href="#piece">2. Undo one piece</a></td></tr>
+        <tr><td>opsi itself is broken (WebGUI, opsiconfd, clients gone) or you cannot tell what changed</td><td><a href="#snapshot">3. Revert the VM snapshot</a>, then the MikroTik</td></tr>
+        <tr><td>The VM is gone</td><td><a href="#rebuild">4. Rebuild the imaging host</a></td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="card warn">
+      <p>Two places hold the boot setup: the MikroTik <strong>IT-Foghat-RTR</strong> (which file a laptop is told to boot) and the opsi VM (which serves it). The VM snapshot does not cover the MikroTik. Every rollback below says which side it touches.</p>
+    </div>
+
+    <h2 id="fast">1. Back to the old boot path</h2>
+    <p>This is how imaging worked before 10 November: the MikroTik hands out <code>snponly.efi</code> (options 66/67), the opsi container serves it over TFTP, Secure Boot is off. Windows imaging works this way. Ubuntu with whole-disk encryption does not, because it needs Secure Boot on.</p>
+    <ol class="steps">
+      <li><strong>MikroTik: put options 66/67 back.</strong> WinBox → New Terminal:
+<pre><code>/ip dhcp-server network set 0 next-server=192.168.26.106 boot-file-name=snponly.efi
+/ip dhcp-server option sets set opsi options=opsi-tftp,opsi-boot
+/ip dhcp-server network print detail
+/ip dhcp-server option sets print detail</code></pre>
+        Row 0 (192.168.26.0/24) should show <code>next-server=192.168.26.106 boot-file-name="snponly.efi"</code>, and set <code>opsi</code> should list <code>opsi-tftp,opsi-boot</code>.</li>
+      <li><strong>opsi host: give TFTP back to the opsi container.</strong>
+<pre><code>/opt/imaging-pxe/install-pxe.sh rollback</code></pre>
+        It stops dnsmasq, sets <code>OPSICONFD_PORT_UDP=69</code> in <code>/opt/opsi-server/opsi-server.env</code>, recreates the opsi container, copies <code>snponly.efi</code> and the <code>.ipxe</code> files back into its <code>/tftpboot</code>, and prints the first line of <code>default.ipxe</code> as a check. opsiconfd takes about 30 seconds to answer again.</li>
+      <li><strong>Laptop:</strong> power it fully off, then network-boot. It shows the iPXE text, then the form.</li>
+    </ol>
+    <p>Step 1 alone is often enough: with 66/67 back, laptops take <code>snponly.efi</code> from the MikroTik's answer, and dnsmasq on the host still serves that file. Do step 2 when dnsmasq itself is the problem.</p>
+    <p>To go forward again later: <code>/opt/imaging-pxe/install-pxe.sh cutover</code>, then on the MikroTik <code>/ip dhcp-server network set 0 next-server=0.0.0.0 boot-file-name=""</code> and <code>/ip dhcp-server option sets set opsi options=""</code>.</p>
+
+    <h2 id="piece">2. Undo one piece</h2>
+    <p>Backups from 9–10 November are on the opsi host in <code>/root/imaging-backup-20261109</code>. Every change is also its own commit in git (OPSI branch <code>capture-live-imaging</code>, LinuxEncryption branch <code>capture-live-seed</code>), so <code>git revert</code> plus a copy to the host works too.</p>
+    <div class="wrap">
+    <table>
+      <thead><tr><th>Piece</th><th>Undo</th></tr></thead>
+      <tbody>
+        <tr><td>Kiosk (form, choice file, reports, Secure Boot routes)</td><td>Before the Secure Boot routes: <code>cp /root/imaging-backup-20261109/kiosk.py.slice1 /opt/imaging-kiosk/kiosk.py; cp /root/imaging-backup-20261109/server.py.slice1 /opt/imaging-kiosk/server.py</code>. Before any 9 November change: use <code>kiosk.py</code> and <code>server.py</code> from the same folder, and copy <code>decision-ttl.conf</code> back to <code>/etc/systemd/system/imaging-kiosk.service.d/</code>. Then <code>systemctl daemon-reload; systemctl restart imaging-kiosk</code>.</td></tr>
+        <tr><td>Windows postinst (no watchdog, one handoff reboot, imaging report)</td><td><code>P=/var/lib/containers/storage/volumes/opsi-server_opsi_data/_data/lib/depot/win11-x64/custom/postinst.d</code><br><code>cp /root/imaging-backup-20261109/postinst.d/* $P/; rm -f $P/98_imaging_report.cmd $P/imaging-report.ps1.bundled; chown --reference=$P/10_entra_join.cmd $P/*</code></td></tr>
+        <tr><td>Step timing, log upload, network reset guard, app-cache fallback (10 November)</td><td><code>B=/root/imaging-backup-20261109</code>; <code>cp $B/postinst.cmd $D/opsi/postinst.cmd</code>; <code>cp $B/postinst.d/03_force_dhcp.cmd $B/postinst.d/imaging-report.ps1.bundled $B/postinst.d/setup.ps1.bundled $D/custom/postinst.d/</code> with <code>D=/var/lib/containers/storage/volumes/opsi-server_opsi_data/_data/lib/depot/win11-x64</code>; kiosk before this: <code>kiosk.py.slice3</code>, <code>server.py.slice3</code>.</td></tr>
+        <tr><td>Windows Update at the sign-in screen</td><td>Put the old in-image step back: <code>cp /root/imaging-backup-20261109/postinst.d/08_windows_update.* $D/custom/postinst.d/</code> and <code>cp /root/imaging-backup-20261109/postinst.d/99_handoff.cmd.idle-update $D/custom/postinst.d/99_handoff.cmd</code>. On a laptop already imaged: <code>schtasks /Delete /TN LabIdleWindowsUpdate /F</code>.</td></tr>
+        <tr><td>App cache (laptops install apps from the host)</td><td>Turn it off: <code>systemctl disable --now app-cache-sync.timer; mv /opt/linuximage/apps/index.json /opt/linuximage/apps/index.json.off</code>. The kiosk then sends the internet URLs again; no restart needed.</td></tr>
+        <tr><td>Auto-enroll (no longer arms localboot products)</td><td><code>cp /root/imaging-backup-20261109/pxe-auto-enroll.py /opt/opsi-server/bin/; systemctl restart pxe-auto-enroll</code></td></tr>
+        <tr><td>Ubuntu seed (TPM whole-disk encryption, first-boot report)</td><td><code>cd /opt/linuximage; cp casper/initrd.auto.bak-202611100235 casper/initrd.auto; cp nocloud/seed.cpio.bak-202611100235 nocloud/seed.cpio; cp nocloud/user-data.bak-202611100235 nocloud/user-data</code>. The old seed also needs the old kiosk (it fetches the install password and recovery phrase, which the new kiosk no longer serves).</td></tr>
+        <tr><td>opsi container TFTP port</td><td><code>/opt/opsi-server/opsi-server.env.bak-202611100252</code> is the file before the cutover (<code>OPSICONFD_PORT_UDP=69</code>). The rollback in section 1 does this for you.</td></tr>
+        <tr><td>Windows WinPE path (when it is turned on)</td><td>Remove the laptop's MAC from <code>/var/lib/imaging-kiosk/winpe-macs</code>, or drop <code>KIOSK_WINDOWS_PATH=winpe</code> from the kiosk service. Windows goes back to the opsi path. Delete stale tags in <code>/var/lib/imaging-kiosk/pxe-tags</code>.</td></tr>
+        <tr><td>A laptop that keeps booting its disk instead of the form</td><td>Its choice was used. Delete <code>/var/lib/imaging-kiosk/decisions/&lt;mac without colons&gt;.json</code> and its file in <code>pxe-tags</code>, then network-boot.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2 id="snapshot">3. Revert the VM snapshot</h2>
+    <p>A Proxmox snapshot of the opsi VM was taken on 9 November 2026 (evening, Central) right before the TFTP cutover. Reverting it puts the VM back to: kiosk with single-use choices and imaging reports, the Windows postinst changes, the new Ubuntu seed, dnsmasq installed but <em>not running</em>, and TFTP inside the opsi container.</p>
+    <ol class="steps">
+      <li><strong>Proxmox:</strong> shut the opsi VM down, roll back to the snapshot, start it.</li>
+      <li><strong>MikroTik:</strong> put options 66/67 back (section 1, step 1). The VM after the revert serves TFTP from the container again, and nothing answers proxy DHCP.</li>
+      <li><strong>Check:</strong> <code>podman exec opsi-server_opsi-server_1 ls /tftpboot</code> lists <code>snponly.efi</code> and <code>default.ipxe</code>. If not, copy them in from <code>/srv/tftp</code> with <code>podman cp</code>.</li>
+    </ol>
+    <p>Lost by the revert: imaging reports in <code>/var/lib/imaging-kiosk/reports</code>, choice files, and Ubuntu recovery keys filed after the snapshot. Copy <code>/var/lib/imaging-kiosk/reports</code> and <code>/opt/imaging-private/recovery</code> off the VM first if it still runs.</p>
+
+    <h2 id="rebuild">4. Rebuild the imaging host</h2>
+    <p>Everything that runs is in git, except secrets and large vendor files. Rebuild in this order on an Ubuntu 24.04 VM with two NICs (management, and <code>ens19</code> on 192.168.26.0/24 as 192.168.26.106).</p>
+
+    <h3>What git holds</h3>
+    <div class="wrap">
+    <table>
+      <thead><tr><th>Repo path</th><th>Goes to</th></tr></thead>
+      <tbody>
+        <tr><td>OPSI <code>opsi-server/</code></td><td><code>/opt/opsi-server</code> (compose stack, <code>create-secrets.sh</code>, <code>secrets-entrypoint.sh</code>) and <code>/opt/opsi-server/bin</code> (auto-enroll, <code>sync-*.sh</code>); <code>opsi-server/systemd/</code> to <code>/etc/systemd/system</code></td></tr>
+        <tr><td>OPSI <code>windows/unattend.xml</code>, <code>windows/postinst.cmd</code>, <code>postinst/active/</code></td><td>depot <code>win11-x64/custom/unattend.xml</code>, <code>win11-x64/opsi/postinst.cmd</code>, <code>win11-x64/custom/postinst.d</code></td></tr>
+        <tr><td>OPSI <code>kiosk/</code></td><td><code>/opt/imaging-kiosk</code>, units from <code>kiosk/systemd/</code>; <code>kiosk/build-ui-initrd.sh</code> rebuilds the form image</td></tr>
+        <tr><td>OPSI <code>boot/</code></td><td><code>/opt/imaging-pxe</code>; <code>install-pxe.sh stage</code> then <code>cutover</code></td></tr>
+        <tr><td>OPSI <code>windows/winpe/</code></td><td>WinPE build (on a Windows PC) and <code>/srv/tftp/boot</code></td></tr>
+        <tr><td>LinuxEncryption <code>imaging/</code>, <code>scripts/</code></td><td><code>/opt/linuximage/nocloud</code>; <code>imaging/build-seed-cpio.sh</code> rebuilds the seed and <code>initrd.auto</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>What only exists on the host</h3>
+    <p>These are not in git on purpose. Keep a copy in the password vault; today the VM and its snapshot are the only copies.</p>
+    <div class="wrap">
+    <table>
+      <thead><tr><th>Item</th><th>Where</th><th>How to get it again</th></tr></thead>
+      <tbody>
+        <tr><td>Podman secrets: <code>opsi_*</code>, <code>lab_console_*</code>, <code>lab-wifi-psk</code>, <code>nextadmin-password</code>, <code>nextdesk_client_secret</code>, <code>graph_client_secret</code></td><td><code>podman secret ls</code></td><td><code>create-secrets.sh</code> makes new opsi ones. Wi-Fi PSK, NextAdmin password, and the Entra app secrets come from the vault or Entra.</td></tr>
+        <tr><td><code>opsi-server.env</code></td><td><code>/opt/opsi-server</code></td><td>Copy from a backup; it names the image <code>uibmz/opsi-server:4.3.59.4</code> and <code>OPSICONFD_PORT_UDP=6969</code></td></tr>
+        <tr><td>Kiosk private files: NextPass token, Atera link, Wazuh password, UniFi .deb, NextAdmin and Ubuntu install passwords, Ubuntu recovery keys</td><td><code>/opt/imaging-private</code></td><td>Vault, Atera, Wazuh manager, UniFi portal. Recovery keys exist only here and in the NextPass mails.</td></tr>
+        <tr><td>Depot secrets: <code>05_wifi_profile.xml</code>, <code>entra-join.ppkg</code> (+ <code>.meta</code>), <code>wazuh-auth.pass</code>, <code>onedrive-tenant-id.txt</code>, <code>atera-agent.msi</code>, <code>unifi-endpoint.msi</code></td><td>depot <code>win11-x64/custom/postinst.d</code></td><td><code>sync-lab-wifi.sh</code>, <code>sync-entra-join.sh</code>, <code>sync-wazuh-agent.sh</code>, <code>sync-atera-agent.sh</code>, <code>sync-unifi-endpoint.sh</code> in <code>/opt/opsi-server/bin</code>. The Entra package is rebuilt in Windows Configuration Designer (token lasts 180 days at most).</td></tr>
+        <tr><td>Windows install files and drivers</td><td>depot <code>win11-x64/installfiles</code>, <code>drivers</code></td><td>Reinstall the opsi <code>win11-x64</code> product, copy the Windows 11 media, re-add the drivers under <code>drivers/drivers/additional</code>.</td></tr>
+        <tr><td>Ubuntu ISO, NFS root, kiosk build tree</td><td><code>/opt/linuximage</code>, <code>/srv/nfs</code></td><td>Download <code>ubuntu-26.04.1-desktop-amd64.iso</code>; <code>kiosk/nfs/install-ubuntu-nfs.sh</code>; the form image tree is listed in <code>kiosk/ui-initrd.manifest</code>.</td></tr>
+        <tr><td>App cache</td><td><code>/opt/linuximage/apps</code></td><td><code>systemctl start app-cache-sync.service</code> downloads it again (about 500 MB)</td></tr>
+        <tr><td>Imaging reports and choice files</td><td><code>/var/lib/imaging-kiosk</code></td><td>Not recoverable; reports are also on the NextDesk tickets once ImagingWrite exists.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Order</h3>
+    <ol class="steps">
+      <li><strong>opsi stack:</strong> copy <code>opsi-server/</code> to <code>/opt/opsi-server</code>, restore <code>opsi-server.env</code>, run <code>create-secrets.sh</code>, enable <code>opsi-stack.service</code>. Restore the depot (or reinstall <code>win11-x64</code>) and copy <code>windows/</code> and <code>postinst/active/</code> into it. Put the depot secrets back with the <code>sync-*.sh</code> scripts.</li>
+      <li><strong>Auto-enroll:</strong> install <code>pxe-auto-enroll.py</code> and its unit, start it, check <code>http://192.168.26.106:8080/opsi/opsi-linux-bootimage/kernel.x64</code> answers.</li>
+      <li><strong>Kiosk:</strong> copy <code>kiosk/</code> to <code>/opt/imaging-kiosk</code>, restore <code>/opt/imaging-private</code>, install the units, start <code>imaging-kiosk</code>. Check <code>http://192.168.26.106:8091/grub.cfg?mac=02:00:00:00:00:01</code> returns "Loading Nextlink Imaging".</li>
+      <li><strong>Ubuntu files:</strong> ISO, NFS export, <code>linuximage-http.service</code> (port 8090), then <code>build-seed-cpio.sh</code>.</li>
+      <li><strong>Boot:</strong> <code>/opt/imaging-pxe/install-pxe.sh stage</code>, then <code>cutover</code>. Copy the WinPE build into <code>/srv/tftp/boot</code> when there is one.</li>
+      <li><strong>MikroTik:</strong> leave options 66/67 off (section 1 shows how to put them back if you want the old path).</li>
+      <li><strong>Test:</strong> image one Windows laptop and check its report in <code>/var/lib/imaging-kiosk/reports</code>.</li>
+    </ol>
+
+    <h2>Checks after any recovery</h2>
+<pre><code>systemctl is-active imaging-kiosk pxe-auto-enroll imaging-pxe linuximage-http opsi-stack
+podman ps --format '{{.Names}} {{.Status}}'
+curl -sk -o /dev/null -w '%{http_code}\n' https://192.168.26.106:4447/      # 307 = opsiconfd up
+curl -sf tftp://192.168.26.106/default.ipxe | head -1                      # #!ipxe
+curl -sf tftp://192.168.26.106/shimx64.efi -o /dev/null &amp;&amp; echo shim ok
+curl -s 'http://192.168.26.106:8091/grub.cfg?mac=02:00:00:00:00:01' | head -1
+journalctl -u imaging-pxe -n 20 --no-pager                                   # what laptops asked for</code></pre>
+
+    <h2>MikroTik backups</h2>
+    <p>Before the 10 November change, WinBox Files → Backup (<code>before-pxe-20261109.backup</code>) and <code>/export file=before-pxe-20261109</code> (<code>.rsc</code>). Restoring the <code>.backup</code> replaces the whole router config and reboots it; use the two DHCP commands in section 1 instead unless the router config itself is damaged. Keep both files off the router.</p>
+  </main>
+</body>
+</html>

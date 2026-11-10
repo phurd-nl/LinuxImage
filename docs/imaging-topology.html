@@ -45,80 +45,92 @@
 </head>
 <body>
   <main class="page">
-    <p class="meta">Current path · 5 November 2026</p>
+    <p class="meta">Current path · 10 November 2026</p>
     <h1>Imaging topology</h1>
-    <p>How a laptop is imaged today. The bench steps are the <a href="imaging-sop.html">imaging SOP</a>. The 2 November plan map is kept at <a href="imaging-topology-plan-2026-11-02.html">imaging-topology-plan-2026-11-02.html</a>. Update this page when the path changes.</p>
+    <p>How a laptop is imaged today. The bench steps are the <a href="imaging-sop.html">imaging SOP</a>; undo and rebuild steps are in <a href="recovery.html">imaging recovery</a>. The 2 November plan map is kept at <a href="imaging-topology-plan-2026-11-02.html">imaging-topology-plan-2026-11-02.html</a>. Update this page when the path changes.</p>
 
     <h2>1. Network boot</h2>
     <div class="flow">
-      <div class="box"><span class="tag boot">Running</span><strong>Laptop</strong><small>UEFI network boot on the imaging VLAN. Power and the cable stay connected.</small></div>
+      <div class="box"><span class="tag boot">Running</span><strong>Laptop</strong><small>UEFI network boot on the imaging VLAN. Power and the cable stay connected. Secure Boot may be on or off.</small></div>
       <span class="arrow">→</span>
-      <div class="box"><span class="tag boot">Running</span><strong>DHCP</strong><small>Offers <code>snponly.efi</code> from <code>192.168.26.106</code>. DHCP is not on the opsi host.</small></div>
+      <div class="box"><span class="tag boot">Running</span><strong>MikroTik DHCP</strong><small>IT-Foghat-RTR, server FoghatDHCP, hands out the address only. Options 66/67 were removed on 10 November.</small></div>
       <span class="arrow">→</span>
-      <div class="box"><span class="tag boot">Running</span><strong>TFTP :69</strong><small><code>default.ipxe</code> and <code>autoexec.ipxe</code> chain to the kiosk. They retry if that chain fails.</small></div>
+      <div class="box"><span class="tag boot">Running</span><strong>dnsmasq on .106</strong><small><code>imaging-pxe.service</code>. Proxy DHCP picks the boot file per laptop and serves it over TFTP from <code>/srv/tftp</code>.</small></div>
       <span class="arrow">→</span>
-      <div class="box"><span class="tag boot">Running</span><strong>boot.ipxe :8091</strong><small>The imaging host looks up the laptop MAC. No saved choice loads the form. A saved choice skips the form.</small></div>
+      <div class="box"><span class="tag boot">Running</span><strong>shim → GRUB</strong><small>Ubuntu's signed <code>shimx64.efi</code> (Microsoft 2011 and 2023 signatures) loads signed GRUB, which asks <code>:8091/grub.cfg</code> what this laptop should do.</small></div>
     </div>
+    <p>GRUB gets one of four answers: the form (no saved choice), the Ubuntu installer, the opsi Windows path, or "boot the disk" (this Start already installed). A laptop on the WinPE test list skips shim and gets Microsoft's boot manager straight from dnsmasq. The old iPXE files (<code>snponly.efi</code>, <code>default.ipxe</code>) are still served for the opsi Windows path.</p>
+    <p>Lenovo laptops with Secure Boot on need "Allow Microsoft 3rd Party UEFI CA" turned on in the BIOS, or the firmware refuses shim.</p>
 
     <h2>2. The form, or the saved choice</h2>
     <div class="flow">
-      <div class="box"><span class="tag">Running</span><strong>Kiosk</strong><small>Small Linux image. A framebuffer form, not a browser and not the Ubuntu desktop. Kernel is the signed Ubuntu casper <code>vmlinuz</code>.</small></div>
+      <div class="box"><span class="tag">Running</span><strong>Kiosk</strong><small>Small Linux image with a framebuffer form. Kernel is the signed Ubuntu casper <code>vmlinuz</code>.</small></div>
       <span class="arrow">→</span>
-      <div class="box"><span class="tag">Running</span><strong>Look up</strong><small>The imaging host calls NextDesk. It tries <code>infara-scale.nxlink.com</code>, then <code>nextdesk.nxlink.com</code>. The public desk answers. The tech does not pick UAT or Prod.</small></div>
+      <div class="box"><span class="tag">Running</span><strong>Look up</strong><small>The imaging host calls <code>nextdesk.nxlink.com</code> with the ImagingRead app login.</small></div>
       <span class="arrow">→</span>
-      <div class="box"><span class="tag">Running</span><strong>Choice file</strong><small><code>/var/lib/imaging-kiosk/decisions/&lt;mac&gt;.json</code>. Ticket, person, department, operating system, and checked apps. Expires after 30 minutes. Not served on port 8090.</small></div>
+      <div class="box"><span class="tag">Running</span><strong>Choice file</strong><small><code>/var/lib/imaging-kiosk/decisions/&lt;mac&gt;.json</code>: ticket, person, department, OS, checked apps, and which Windows path. One install boot per Start, then network boots go to the disk. Expires after 6 hours.</small></div>
       <span class="arrow">→</span>
-      <div class="box"><span class="tag">Running</span><strong>One network boot</strong><small>Start sets EFI BootNext to the network entry and reboots. That one boot reads the choice file.</small></div>
+      <div class="box"><span class="tag">Running</span><strong>One network boot</strong><small>Start sets EFI BootNext to the network entry and reboots. That boot claims the choice.</small></div>
     </div>
     <p>The checks follow one rule. A previous laptop with a software list in NextDesk wins. With no list on that laptop, the department pack is checked. With no pack for that department name, the core apps are checked. The form says which rule it used.</p>
-    <p>A blue iPXE menu is only the fallback when the kiosk does not start. A normal boot does not sit on it.</p>
 
     <h2>3. Install</h2>
     <div class="split">
       <section class="col">
-        <h2>Windows 11 · this path finishes</h2>
+        <h2>Windows 11 · opsi path (default)</h2>
         <div class="flow">
-          <div class="box"><span class="tag">Running</span><strong>windows.ipxe</strong><small>Unchanged auto-enroll script on TFTP. The choice file is not passed on this script.</small></div>
+          <div class="box"><span class="tag">Running</span><strong>GRUB → iPXE</strong><small>Hands over to <code>snponly.efi</code> and <code>windows.ipxe</code>. Unsigned, so Secure Boot must be off for this path.</small></div>
           <span class="arrow">→</span>
-          <div class="box"><span class="tag">Running</span><strong>Auto-enroll :8080</strong><small>Creates the opsi client from the serial and arms <code>win11-x64</code> plus the lab products.</small></div>
+          <div class="box"><span class="tag">Running</span><strong>Auto-enroll :8080</strong><small>Creates the opsi client <code>NL-&lt;serial&gt;</code> and arms <code>win11-x64</code> only.</small></div>
           <span class="arrow">→</span>
-          <div class="box"><span class="tag">Running</span><strong>opsiconfd 4.3.59.4</strong><small>TCP 4447. Depot product <code>win11-x64</code>. WinPE runs unattended setup.</small></div>
+          <div class="box"><span class="tag">Running</span><strong>opsi bootimage → WinPE</strong><small>opsiconfd 4.3.59.4 (TCP 4447). Copies WinPE to a 10 GB partition, which <code>95_winpe_cleanup</code> deletes later.</small></div>
           <span class="arrow">→</span>
-          <div class="box"><span class="tag">Running</span><strong>Wait screen</strong><small>Full screen on first boot. Names the person, saves the checked apps before Wi-Fi, skips the opsi agent, then installs Atera, Wazuh, UniFi Endpoint, and the checked apps. The sign-in screen says Welcome and the name until the first real sign-in.</small></div>
+          <div class="box"><span class="tag">Running</span><strong>Postinst</strong><small>Wait screen, Wi-Fi, Entra join, apps, agents, report, handoff (section 4).</small></div>
         </div>
+        <h2>Windows 11 · WinPE path (Secure Boot on)</h2>
+        <div class="flow">
+          <div class="box"><span class="tag later">Waiting on WinPE build</span><strong>Microsoft boot manager</strong><small>2023-signed <code>bootmgfw.efi</code>, BCD, and <code>boot.wim</code> in <code>/srv/tftp/boot</code>, built with <code>windows/winpe/build-winpe.ps1</code>.</small></div>
+          <span class="arrow">→</span>
+          <div class="box"><span class="tag later">Waiting on WinPE build</span><strong>winpe-install.ps1</strong><small>Gets this laptop's answer file from <code>:8091/api/winpe</code> (claims the Start), partitions the disk, applies Windows 11 Pro from <code>:8090/windows</code>, adds drivers, unpacks postinst, runs <code>bcdboot /bootex</code>.</small></div>
+          <span class="arrow">→</span>
+          <div class="box"><span class="tag later">Waiting on WinPE build</span><strong>Same postinst</strong><small>From there it is the same as the opsi path. No opsi bootimage, no 10 GB partition.</small></div>
+        </div>
+        <p>A laptop takes the WinPE path when its MAC is in <code>/var/lib/imaging-kiosk/winpe-macs</code>, or every laptop with <code>KIOSK_WINDOWS_PATH=winpe</code>.</p>
       </section>
       <section class="col">
         <h2>Ubuntu 26.04 · built, not proven</h2>
         <div class="flow">
-          <div class="box"><span class="tag later">Next image</span><strong>Desktop ISO</strong><small><code>ubuntu-26.04.1</code> from port 8090, with the NoCloud seed. No paid Linux client agent.</small></div>
+          <div class="box"><span class="tag later">Next image</span><strong>Installer</strong><small>Signed casper kernel via GRUB, live system over NFS, autoinstall seed appended to <code>initrd.auto</code> (rebuilt from git by <code>build-seed-cpio.sh</code>). Needs Secure Boot on.</small></div>
           <span class="arrow">→</span>
-          <div class="box"><span class="tag later">Next image</span><strong>Late install</strong><small>Saves the checked apps and the recovery phrase while the cable works. Firewall denies inbound. SSH, Avahi, rpcbind, and wsdd are off. Entra uses the public UbuntuOauth client.</small></div>
+          <div class="box"><span class="tag later">Next image</span><strong>Late install</strong><small>Saves the checked apps while the cable works. The installer encrypts the whole disk with the TPM. Firewall denies inbound. SSH, Avahi, rpcbind, and wsdd are off. Entra uses the public UbuntuOauth client. NVIDIA through <code>ubuntu-drivers</code>.</small></div>
           <span class="arrow">→</span>
-          <div class="box"><span class="tag later">Next image</span><strong>First boot</strong><small>Encrypts <code>/home</code>. Hidden NextAdmin. Welcome plus the employee name. Dock, Teams, Outlook, OneDrive, and the Linux stand-ins. No laptop has finished it.</small></div>
+          <div class="box"><span class="tag later">Next image</span><strong>First boot</strong><small><code>imaging-firstboot.service</code> files the disk recovery key and sends the imaging report. No disk password; the employee signs in with Entra.</small></div>
         </div>
       </section>
     </div>
 
-    <h2>4. Windows apps, after the operating system is on disk</h2>
-    <p>These run from <code>postinst.d</code> while the imaging cable is still connected. <code>03b_fetch_kiosk_apps.cmd</code> saves the checked list before Wi-Fi. <code>70_core_apps.cmd</code> installs that saved list. A miss, or a laptop with no saved choice, installs Chrome, Firefox, KeePass, and Earth Pro.</p>
+    <h2>4. Windows postinst, after the operating system is on disk</h2>
+    <p>The runner (<code>windows/postinst.cmd</code>, depot <code>win11-x64/opsi/postinst.cmd</code>) runs every <code>.cmd</code> and <code>.ps1</code> in <code>postinst.d</code> in name order, cancels any pending reboot before each step, and tells the imaging host when each step starts and ends. The imaging cable stays connected until handoff.</p>
     <table>
       <thead>
         <tr><th>Piece</th><th>Role</th></tr>
       </thead>
       <tbody>
+        <tr><td><code>00</code>, <code>01</code>, <code>02</code></td><td>Wait screen with the person's name, the install-running marker and no-auto-reboot policies, firewall on.</td></tr>
+        <tr><td><code>03_force_dhcp.cmd</code></td><td>Resets the network card only when the laptop cannot reach the imaging host or the internet.</td></tr>
         <tr><td><code>03b_fetch_kiosk_apps.cmd</code></td><td>Saves the checked software from the imaging host before Wi-Fi can move the laptop off that network.</td></tr>
-        <tr><td><code>04_wifi_specialize.cmd</code></td><td>Joins Nextlink_Corp. The passphrase is staged from a server secret, not from git.</td></tr>
-        <tr><td><code>50_opsi-client-agent.cmd</code></td><td>Does nothing. The product copy cannot put the agent installer back under this name.</td></tr>
-        <tr><td><code>60_atera.cmd</code></td><td>Atera agent on every image.</td></tr>
-        <tr><td><code>61_wazuh.cmd</code></td><td>Wazuh agent on every image.</td></tr>
-        <tr><td><code>62_unifi_endpoint.cmd</code></td><td>UniFi Endpoint MSI on every image. This is not the UniFi VPN row.</td></tr>
-        <tr><td><code>70_core_apps.cmd</code></td><td>Checked catalog apps. Uses the list saved by 03b. One extra pass if a selected app fails. The done marker is written only when that pass exits clean.</td></tr>
-        <tr><td><code>71</code> and <code>75</code></td><td>OneDrive preferences and the start menu, after the apps.</td></tr>
-        <tr><td><code>97_hide_nextadmin.cmd</code></td><td>Hides the local NextAdmin account.</td></tr>
-        <tr><td><code>99_handoff.cmd</code></td><td>Clears autologon, sets Welcome plus the employee name, and reboots to the work sign-in. The first non-NextAdmin sign-in clears that line.</td></tr>
+        <tr><td><code>04</code>, <code>05</code>, <code>06</code>, <code>10</code></td><td>Joins Nextlink_Corp, hides the account and privacy questions, Windows Hello PIN policy, Entra bulk join.</td></tr>
+        <tr><td><code>50_debloat</code></td><td>Removes consumer Store apps. <code>50_opsi-client-agent.cmd</code> and <code>80_repartition.cmd</code> do nothing on purpose; they replace the product's stock files of the same name.</td></tr>
+        <tr><td><code>60</code>, <code>61</code>, <code>62</code></td><td>Atera, Wazuh, and UniFi Endpoint on every image.</td></tr>
+        <tr><td><code>70_core_apps.cmd</code></td><td>Checked catalog apps, from the imaging host's app cache when cached (section 6). A cached installer that fails is retried once through winget. A stuck installer is skipped after 3 minutes with no activity.</td></tr>
+        <tr><td><code>71</code>, <code>75</code></td><td>OneDrive preferences and the start menu.</td></tr>
+        <tr><td><code>95</code>, <code>96</code></td><td>Removes the opsi WinPE partition and any opsi agent files.</td></tr>
+        <tr><td><code>98_imaging_report.cmd</code></td><td>Uploads the logs and posts the report (serial, model, person, Entra, Secure Boot, TPM, BitLocker, failed apps, missing agents) to the imaging host.</td></tr>
+        <tr><td><code>99_handoff.cmd</code></td><td>Hides NextAdmin, clears autologon, sets Welcome plus the employee name, registers <code>LabIdleWindowsUpdate</code>, deletes the answer file, and reboots once to the work sign-in.</td></tr>
+        <tr><td><code>LabIdleWindowsUpdate</code></td><td>After that reboot, installs Windows updates and drivers at the sign-in screen, restarts only while nobody is signed in, stops after 5 passes or once someone signs in, and sends the result for a second ticket note.</td></tr>
       </tbody>
     </table>
-    <p>Department apps are not installed by a login task. That path, <code>lab-provision</code>, is disabled. WiFiman, when checked, is scheduled for the employee’s next sign-in because it does not install as the machine account. WSL turns the feature on now and finishes the distro after a reboot.</p>
+    <p>Department apps are not installed by a login task. WiFiman, when checked, is scheduled for the employee’s next sign-in because it does not install as the machine account. WSL turns the feature on now and finishes the distro after a reboot.</p>
 
     <h2>5. Where it lives</h2>
     <table>
@@ -126,26 +138,40 @@
         <tr><th>What</th><th>Where</th></tr>
       </thead>
       <tbody>
-        <tr><td>Imaging host</td><td><code>192.168.26.106</code>. Form and choice API on port 8091, bound to that address (<code>imaging-kiosk.service</code>, <code>/opt/imaging-kiosk</code>). Boot files on port 8090, also bound to that address. Ports 8090 and 8091 do not listen on every interface.</td></tr>
-        <tr><td>Choices</td><td><code>/var/lib/imaging-kiosk/decisions</code>. One JSON file per MAC, colons removed. It expires 30 minutes after Start. Delete it to show the form sooner. <code>http://192.168.26.106:8090/decisions/</code> returns 404.</td></tr>
-        <tr><td>Private files</td><td><code>/opt/imaging-private</code>, root-only, outside the boot port. NextPass token, Atera link, Wazuh password, UniFi package, and NextAdmin password. Ubuntu recovery phrases go in <code>recovery/&lt;mac&gt;.pass</code>.</td></tr>
+        <tr><td>Imaging host</td><td><code>192.168.26.106</code> (opsi VM). Kiosk API on 8091 (<code>imaging-kiosk.service</code>, <code>/opt/imaging-kiosk</code>), files on 8090 (<code>linuximage-http.service</code>, <code>/opt/linuximage</code>), auto-enroll on 8080, opsiconfd on 4447. Ports 8090 and 8091 listen only on the imaging address.</td></tr>
+        <tr><td>Network boot</td><td><code>imaging-pxe.service</code> (dnsmasq): proxy DHCP on <code>ens19</code> (67, 4011), TFTP 69 from <code>/srv/tftp</code>. Config <code>/etc/imaging-pxe/</code>, tooling <code>/opt/imaging-pxe</code>. The opsi container's own TFTP is on 6969 and unused.</td></tr>
+        <tr><td>Choices and boot tags</td><td><code>/var/lib/imaging-kiosk/decisions</code> (one JSON per MAC, colons removed; delete it to show the form again) and <code>/var/lib/imaging-kiosk/pxe-tags</code> (WinPE laptops). Not served on 8090.</td></tr>
+        <tr><td>Reports and logs</td><td><code>/var/lib/imaging-kiosk/reports</code>: every report (<code>&lt;time&gt;-&lt;serial&gt;.json</code>) and log bundle (<code>-logs.zip</code>). Live: <code>journalctl -u imaging-kiosk -f</code>.</td></tr>
+        <tr><td>Private files</td><td><code>/opt/imaging-private</code>, root-only. NextPass token, Atera link, Wazuh password, UniFi package, NextAdmin and Ubuntu install passwords, Ubuntu disk recovery keys (<code>recovery/&lt;mac&gt;.pass</code>). An Ubuntu Start lets that laptop read the Wazuh password and the Atera link once each.</td></tr>
+        <tr><td>App cache</td><td><code>/opt/linuximage/apps</code> (about 500 MB, index in <code>index.json</code>), refreshed nightly by <code>app-cache-sync.timer</code>.</td></tr>
+        <tr><td>Windows files for WinPE</td><td><code>/opt/linuximage/windows</code>: links to the depot's <code>install*.swm</code>, <code>drivers.zip</code>, <code>manifest.txt</code>.</td></tr>
         <tr><td>Catalog</td><td><code>/opt/lab-console/data/catalog</code>. The form and <code>/api/install.json</code> both read it.</td></tr>
         <tr><td>Windows product</td><td><code>win11-x64</code> on the opsi depot, opsiconfd 4.3.59.4, container <code>opsi-server_opsi-server_1</code>.</td></tr>
-        <tr><td>NextDesk read</td><td>App role ImagingRead. The live desk that accepts it is <code>https://nextdesk.nxlink.com</code>. <code>https://infara-scale.nxlink.com</code> still refuses that token.</td></tr>
-        <tr><td>Source</td><td>Windows scripts are in <code>postinst/</code> in this repo. <code>active/</code> still runs. <code>retired/</code> is kept. The kiosk source is <code>fog/opsi/imaging-kiosk</code>.</td></tr>
+        <tr><td>NextDesk</td><td>App role ImagingRead for look-ups at <code>https://nextdesk.nxlink.com</code>. Ticket notes need ImagingWrite (not built yet).</td></tr>
+        <tr><td>Source</td><td>This repo (<code>Nextlink-Internet/opsi</code>): <code>boot/</code>, <code>kiosk/</code>, <code>windows/</code>, <code>postinst/</code>, <code>opsi-server/</code>. The Ubuntu seed is in LinuxEncryption (<code>imaging/</code>, <code>scripts/</code>).</td></tr>
       </tbody>
     </table>
 
     <h2>Ubuntu recovery and lockdown</h2>
-    <p>An Ubuntu Start writes one recovery phrase per MAC and emails a NextPass link to the imaging owner. The link expires after 90 days or 5 views. The host file remains until a vault exists. Imaging that MAC again deletes the old phrase and emails a new one. The laptop copies the phrase while the imaging cable works and deletes its copy after the disk key is set.</p>
-    <p>The same install denies new inbound connections and allows outbound. SSH, Avahi, rpcbind, and Windows discovery are off. Name resolution, time sync, and printing stay installed, and inbound traffic to them is dropped. Automatic security updates are on. Hibernate, hybrid sleep, and ordinary suspend are masked.</p>
+    <p>The installer’s TPM disk encryption makes the recovery key. On first boot the laptop posts it to the imaging host, which keeps one key per MAC and emails a NextPass link to the imaging owner. The link expires after 90 days or 5 views. The host file remains until a vault exists. Imaging that MAC again deletes the old key.</p>
+    <p>The same install denies new inbound connections and allows outbound. SSH, Avahi, rpcbind, and Windows discovery are off. Name resolution, time sync, and printing stay installed, and inbound traffic to them is dropped. Automatic security updates are on. Hibernate and hybrid sleep are masked.</p>
+
+    <h2>6. Speed and visibility</h2>
+    <p>Apps install from the imaging host over the cable. <code>app-cache-sync.timer</code> refreshes <code>/opt/linuximage/apps</code> every night at 04:30: direct installers as they are, winget apps from Microsoft's winget manifests with winget's own silent switches and SHA-256 check. MobaXterm, WiFiman, and WSL still come from the internet. A cached installer that fails is retried once through winget.</p>
+    <p>The postinst runner tells the host when each step starts and ends (<code>journalctl -u imaging-kiosk | grep progress</code> shows it live). The report on the ticket lists the slowest steps and the total. The report step uploads the laptop's <code>C:\opsi.org\log</code>, progress folder, and Panther setup logs to <code>/var/lib/imaging-kiosk/reports</code>. <code>03_force_dhcp.cmd</code> resets the network card only when the laptop is really offline.</p>
+    <p>Windows Update is not part of imaging any more. Handoff registers <code>LabIdleWindowsUpdate</code>, which installs updates and drivers at the sign-in screen after the handoff restart, restarts again only while nobody is signed in, stops after 5 passes or when someone signs in, and writes the result as a second note on the ticket. Its log is <code>C:\opsi.org\log\windows_update_idle.log</code>.</p>
+
+    <p>If imaging stops working, the undo steps and the host rebuild are in <a href="recovery.html">imaging recovery</a>.</p>
 
     <h2>Open</h2>
     <ul>
-      <li>No laptop has finished this build. NL-J0DTRV3 still has only the core apps until it is imaged again.</li>
-      <li>The Entra password is supposed to replace the Ubuntu install password on <code>/home</code> at the first online sign-in. That hook has not run on a laptop.</li>
+      <li>No laptop has been imaged since the 10 November changes. The first images check the signed boot path, the single handoff reboot, the app cache, and the step timing.</li>
+      <li>The WinPE path waits on a 2023-signed WinPE build (<code>windows/winpe/README.md</code>).</li>
+      <li>Ubuntu with TPM full-disk encryption has not finished on a laptop. Older Ubuntu releases had autoinstall bugs with it.</li>
+      <li>Imaging reports and the Windows Update follow-up cannot be written on NextDesk tickets until NextDesk has an ImagingWrite app role (brain todo #1125). They are kept on the host until then.</li>
+      <li>Secrets exist only on the VM and its snapshot. Copy them into the vault (list in <a href="recovery.html">imaging recovery</a>).</li>
       <li>UniFi VPN and the NextDesk endpoint are locked on the form and have no package.</li>
-      <li>The opsi client agent is not armed. Identity, software inventory, and bookmark backup were agent products, so they do not run. Wi-Fi join still does.</li>
+      <li>The opsi client agent is not installed. Identity, software inventory, and bookmark backup were agent products, so they do not run.</li>
       <li>The USB sticks are the old seed. A dock does not set the BIOS. The new-hire group is still added by hand.</li>
     </ul>
   </main>

@@ -45,7 +45,7 @@
 </head>
 <body>
   <main class="page">
-    <p class="meta">Imaging bench · current as of 5 November 2026</p>
+    <p class="meta">Imaging bench · current as of 10 November 2026</p>
     <h1>Imaging a laptop</h1>
     <p class="lede">One form on the laptop. Enter the ticket, confirm the person and the software, press Start, and leave it on the imaging cable. The map of how that works is the <a href="imaging-topology.html">imaging topology</a>.</p>
 
@@ -74,7 +74,7 @@
 
     <h2>What a restart does</h2>
     <p>Start saves the choice on the imaging host for that laptop’s network address. The file is not on the public boot port. The reboot right after Start is sent to the network once. That boot sees the saved choice, skips the form, and starts the installer for the operating system you picked.</p>
-    <p>A later restart from the hard disk continues the install already under way. It does not return to the form. The saved choice lasts 30 minutes. After that, a network boot shows the form again, so the same laptop can be imaged for someone else. A network boot during those 30 minutes starts the saved install over.</p>
+    <p>Each Start installs once. A later restart, from the disk or from the network, continues the install already under way. A network boot after that one install boot is sent back to the disk. It does not start the install over. The saved choice lasts 6 hours. After that, a network boot shows the form again, so the same laptop can be imaged for someone else.</p>
 
     <div class="card warn">
       <p><strong>To show the form again,</strong> delete that laptop’s saved choice on the imaging host, then network-boot. The file is <code>/var/lib/imaging-kiosk/decisions/</code> plus the MAC address with the colons removed, ending in <code>.json</code>. After it is gone, the next network boot opens the empty form.</p>
@@ -112,9 +112,15 @@
     </table>
 
     <h2>Ubuntu test</h2>
-    <p>Pick Ubuntu 26.04 on the form and press Start. The installer uses the seed on the imaging host. It does not ask for a language. The first boot encrypts <code>/home</code>, creates hidden NextAdmin, and turns on Entra sign-in. The dock sits on the bottom with Chrome, Teams, and Outlook pinned. Checked software installs as the Linux program named on the form: The Dude as Zenmap, MobaXterm as Remmina, WinSCP as FileZilla.</p>
-    <p>Start also stores one recovery phrase for that laptop’s MAC on the imaging host and emails a NextPass link to the imaging owner. Imaging that same laptop again deletes the old phrase and emails a new one. The laptop removes its own copy after the disk key is set. Windows does not get a recovery phrase.</p>
-    <p>The Ubuntu image denies new inbound connections, masks SSH, and turns off Avahi, rpcbind, and Windows discovery. Sleep, hibernate, and hybrid sleep are masked. OneDrive still needs the employee to approve it once. No laptop has finished this image.</p>
+    <p>Pick Ubuntu 26.04 on the form and press Start. The installer uses the seed on the imaging host. It does not ask for a language. The installer encrypts the whole disk and seals it to the TPM, so the laptop starts without a disk password. Secure Boot has to be on. The installer creates hidden NextAdmin, and the first boot turns on Entra sign-in. The dock sits on the bottom with Chrome, Teams, and Outlook pinned. Checked software installs as the Linux program named on the form: The Dude as Zenmap, MobaXterm as Remmina, WinSCP as FileZilla.</p>
+    <p>On its first boot the laptop sends the installer’s disk recovery key to the imaging host, which keeps it for that laptop’s MAC and emails a NextPass link to the imaging owner. Imaging that same laptop again replaces the old key. Windows does not get a recovery key from this host.</p>
+    <p>The Ubuntu image denies new inbound connections, masks SSH, and turns off Avahi, rpcbind, and Windows discovery. Hibernate and hybrid sleep are masked. OneDrive still needs the employee to approve it once. No laptop has finished this image.</p>
+
+    <h2>After imaging</h2>
+    <p>After the restart to the sign-in screen, leave the laptop plugged in and on for a while. Windows installs its updates while it waits and may restart on its own; it stops as soon as someone signs in. The result is added to the ticket.</p>
+    <p>Every Windows and Ubuntu image sends a report to the imaging host just before it hands off: serial, model, the person, Entra sign-in, Secure Boot, TPM, disk encryption, apps that failed, and agents that are missing. The host keeps every report in <code>/var/lib/imaging-kiosk/reports</code> and writes it as an internal note on the laptop’s NextDesk ticket. If an install started 3 hours ago and sent nothing, the host notes that on the ticket instead. Notes need the ImagingWrite role in NextDesk, which does not exist yet; until then the reports are only on the host.</p>
+
+    <p>If imaging stops working, the undo steps and the host rebuild are in <a href="recovery.html">imaging recovery</a>.</p>
 
     <h2>Not done yet</h2>
     <ul>
