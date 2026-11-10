@@ -102,7 +102,7 @@
         <div class="flow">
           <div class="box"><span class="tag later">Next image</span><strong>Installer</strong><small>Signed casper kernel via GRUB, live system over NFS, autoinstall seed appended to <code>initrd.auto</code> (rebuilt from git by <code>build-seed-cpio.sh</code>). Needs Secure Boot on.</small></div>
           <span class="arrow">→</span>
-          <div class="box"><span class="tag later">Next image</span><strong>Late install</strong><small>Saves the checked apps while the cable works. The installer encrypts the whole disk with the TPM. Firewall denies inbound. SSH, Avahi, rpcbind, and wsdd are off. Entra uses the public UbuntuOauth client. NVIDIA through <code>ubuntu-drivers</code>.</small></div>
+          <div class="box"><span class="tag later">Next image</span><strong>Late install</strong><small>Saves the checked apps while the cable works and adds the Nextlink_Corp Wi-Fi (key read once from the host). The installer encrypts the whole disk with the TPM. Firewall denies inbound. SSH, Avahi, rpcbind, and wsdd are off. Entra uses the public UbuntuOauth client. NVIDIA through <code>ubuntu-drivers</code>.</small></div>
           <span class="arrow">→</span>
           <div class="box"><span class="tag later">Next image</span><strong>First boot</strong><small><code>imaging-firstboot.service</code> files the disk recovery key and sends the imaging report. No disk password; the employee signs in with Entra.</small></div>
         </div>
