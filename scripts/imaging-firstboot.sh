@@ -81,6 +81,15 @@ print(json.dumps({
 PY
 )
 printf '%s\n' "$report" > "$STATE/imaging-report.json"
+# Installer logs next to the report on the imaging host (storage and encryption decisions live there).
+serial=$(tr -d '\n' < /sys/class/dmi/id/product_serial 2>/dev/null | sed 's/[^A-Za-z0-9_-]//g')
+python3 - "$HOST" "$serial" <<'PY' || logger -t imaging-firstboot "installer logs not sent"
+import shutil, sys, urllib.request as u
+host, serial = sys.argv[1], sys.argv[2] or "unknown"
+shutil.make_archive("/tmp/nl-installer-logs", "zip", "/var/log", "installer")
+data = open("/tmp/nl-installer-logs.zip", "rb").read()
+u.urlopen(u.Request(f"{host}/api/logs?serial={serial}", data=data, headers={"Content-Type": "application/zip"}), timeout=60).read()
+PY
 if curl -sf --max-time 30 -H 'Content-Type: application/json' -d "$report" "$HOST/api/report" >/dev/null; then
   date -Is > "$DONE"
   logger -t imaging-firstboot "report sent; recovery key escrowed=$escrowed"
