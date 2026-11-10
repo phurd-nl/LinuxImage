@@ -41,7 +41,7 @@ base_size=$(stat -c %s "$casper/initrd.auto.base")
 pad=$(( (4 - base_size % 4) % 4 ))
 { cat "$casper/initrd.auto.base"; head -c "$pad" /dev/zero; cat "$nc/seed.cpio"; } > "$casper/initrd.auto.new"
 mv "$casper/initrd.auto.new" "$casper/initrd.auto"
-for f in imaging/late-install-linux-encryption.sh imaging/check-tpm-encryption.py scripts/imaging-firstboot.sh scripts/ubuntu_apps.py; do
+for f in imaging/late-install-linux-encryption.sh imaging/check-tpm-encryption.py scripts/imaging-firstboot.sh scripts/ubuntu_apps.py scripts/setup-wifi.sh; do
     install -m 755 "$repo/$f" "$nc/extras/$(basename "$f")"
 done
 rm -rf "$work"

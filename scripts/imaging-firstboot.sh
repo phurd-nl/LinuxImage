@@ -52,6 +52,7 @@ if lspci 2>/dev/null | grep -qi nvidia; then
   if lsmod | grep -q '^nvidia '; then checks+=("NVIDIA driver loaded.")
   else problems+=("NVIDIA GPU found but its driver is not loaded. Run: sudo ubuntu-drivers install"); fi
 fi
+nmcli -t -f NAME connection show 2>/dev/null | grep -qx "Nextlink_Corp" || problems+=("Office Wi-Fi (Nextlink_Corp) is not configured.")
 for svc in wazuh-agent; do
   systemctl is-active --quiet "$svc" || problems+=("$svc is not running.")
 done
