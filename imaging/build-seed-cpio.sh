@@ -34,7 +34,12 @@ install -m 644 "$work/seed/user-data" "$nc/user-data"
 casper=/opt/linuximage/casper
 [ -f "$casper/initrd.auto.base" ] || cp -a "$casper/initrd.auto" "$casper/initrd.auto.base"
 cp -a "$casper/initrd.auto" "$casper/initrd.auto.bak-$(date +%Y%m%d%H%M)"
-cat "$casper/initrd.auto.base" "$nc/seed.cpio" > "$casper/initrd.auto.new"
+# The kernel only reads an archive appended after a compressed one if it starts on a
+# 4-byte boundary (init/initramfs.c); otherwise it stops with "invalid magic" and the
+# old seed inside the base wins. Zero padding in between is skipped.
+base_size=$(stat -c %s "$casper/initrd.auto.base")
+pad=$(( (4 - base_size % 4) % 4 ))
+{ cat "$casper/initrd.auto.base"; head -c "$pad" /dev/zero; cat "$nc/seed.cpio"; } > "$casper/initrd.auto.new"
 mv "$casper/initrd.auto.new" "$casper/initrd.auto"
 for f in imaging/late-install-linux-encryption.sh imaging/check-tpm-encryption.py scripts/imaging-firstboot.sh scripts/ubuntu_apps.py; do
     install -m 755 "$repo/$f" "$nc/extras/$(basename "$f")"
