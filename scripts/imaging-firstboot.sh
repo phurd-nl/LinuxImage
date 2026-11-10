@@ -19,16 +19,60 @@ dmi() { tr -d '\n' < "/sys/class/dmi/id/$1" 2>/dev/null | sed 's/[[:space:]]*$//
 problems=()
 checks=()
 
-# Recovery key from snapd's TPM full-disk encryption.
-key=$(snap recovery --show-keys 2>/dev/null | awk '/recovery/ {print $2; exit}')
+# Recovery key for snapd's TPM full-disk encryption. The installer's key is never shown
+# on a classic install, so make a new one through snapd's API and put it in the
+# default-recovery keyslot (replace it, or add it if the installer made none).
+# Each run makes a fresh key, so a failed filing is fixed by the next run.
+FILED="$STATE/recovery-key-filed"
+key=""
+[ -f "$FILED" ] || key=$(python3 - <<'PY' 2>>/var/log/imaging-firstboot-recovery.log
+import http.client, json, socket, sys, time
+
+class Snapd(http.client.HTTPConnection):
+    def connect(self):
+        self.sock = socket.socket(socket.AF_UNIX)
+        self.sock.connect("/run/snapd.socket")
+
+def call(method, path, body=None):
+    c = Snapd("localhost", timeout=60)
+    c.request(method, path, json.dumps(body) if body else None, {"Content-Type": "application/json"})
+    r = json.loads(c.getresponse().read())
+    return r.get("status-code"), r.get("result"), r.get("change")
+
+code, res, _ = call("POST", "/v2/system-volumes", {"action": "generate-recovery-key"})
+if code != 200:
+    sys.exit(f"generate-recovery-key: {code} {res}")
+for body in ({"action": "replace-recovery-key", "key-id": res["key-id"]},
+             {"action": "add-recovery-key", "key-id": res["key-id"], "keyslots": [{"name": "default-recovery"}]},
+             {"action": "add-recovery-key", "key-id": res["key-id"],
+              "keyslots": [{"container-role": "system-data", "name": "default-recovery"}]}):
+    code, err, change = call("POST", "/v2/system-volumes", body)
+    print(body["action"], code, err, file=sys.stderr)
+    if code != 202:
+        continue
+    for _ in range(120):
+        _, chg, _ = call("GET", f"/v2/changes/{change}")
+        if chg.get("ready"):
+            break
+        time.sleep(1)
+    print("change", chg.get("status"), chg.get("err"), file=sys.stderr)
+    if chg.get("status") == "Done":
+        print(res["recovery-key"])
+        sys.exit(0)
+sys.exit("no recovery keyslot could be set")
+PY
+)
 escrowed=no
-if [ -z "$key" ]; then
-  problems+=("The disk recovery key could not be read (snap recovery --show-keys). Record it from Settings > Security before handing the laptop out.")
+[ -f "$FILED" ] && escrowed=yes
+if [ "$escrowed" = yes ]; then
+  :
+elif [ -z "$key" ]; then
+  problems+=("The disk recovery key could not be set (see /var/log/imaging-firstboot-recovery.log). Make one with snap-tpmctl or Security Center before handing the laptop out.")
 else
   for mac in $macs; do
     body=$(python3 -c 'import json,sys; print(json.dumps({"mac": sys.argv[1], "passphrase": sys.argv[2]}))' "$mac" "$key")
     if curl -sf --max-time 20 -H 'Content-Type: application/json' -d "$body" "$HOST/api/recovery" | grep -q '"ok":true'; then
-      escrowed=yes; break
+      escrowed=yes; touch "$FILED"; break
     fi
   done
   [ "$escrowed" = yes ] || problems+=("The disk recovery key was not filed with the imaging host. Record it before handing the laptop out.")
