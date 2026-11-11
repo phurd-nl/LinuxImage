@@ -106,7 +106,12 @@ for _ in $(seq 1 12); do
   sleep 5
 done
 dpkg-query -W -f='${Status}' unifi-endpoint 2>/dev/null | grep -q "install ok installed" && unifi=true
-[ "$atera" = true ] || problems+=("Atera agent is not running.")
+if [ "$atera" != true ]; then
+  # Say why on the ticket: the service state and its last log lines.
+  why=$( { systemctl is-enabled AteraAgent.service 2>&1; systemctl is-active AteraAgent.service 2>&1;
+           journalctl -u AteraAgent.service -b -n 4 --no-pager -o cat 2>&1; } | tr '\n' ' ' | cut -c1-400)
+  problems+=("Atera agent is not running: ${why}")
+fi
 [ "$wazuh" = true ] || problems+=("Wazuh agent is not running.")
 [ "$unifi" = true ] || problems+=("UniFi Endpoint is not installed.")
 
