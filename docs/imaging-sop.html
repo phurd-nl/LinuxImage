@@ -23,19 +23,21 @@
     html { background: var(--background); color: var(--text); font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; line-height: 1.5; }
     body { margin: 0; }
     a { color: var(--accent); }
-    .page { margin: 0 auto; max-width: 48rem; padding: 2rem 1.25rem 4rem; }
+    .page { margin: 0 auto; max-width: 52rem; padding: 2rem 1.25rem 4rem; }
     h1 { font-size: clamp(1.8rem, 4vw, 2.4rem); letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 0.6rem; }
-    h2 { font-size: 1.25rem; margin: 2rem 0 0.6rem; }
+    h2 { font-size: 1.25rem; margin: 2.2rem 0 0.6rem; }
+    h3 { font-size: 1.02rem; margin: 1.4rem 0 0.4rem; color: var(--text); }
     p, li { color: var(--muted); }
     .lede { font-size: 1.05rem; }
     .meta { color: var(--accent); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
     ol.steps { padding-left: 1.2rem; }
     ol.steps li { margin: 0.7rem 0; }
-    ol.steps strong { color: var(--text); }
+    ol.steps strong, td strong { color: var(--text); }
     .card { background: var(--surface); border: 1px solid var(--border); border-radius: 0.75rem; padding: 0.9rem 1rem; margin: 1rem 0; }
     .warn { background: var(--warning-soft); border-color: #92400e; }
     .ok { background: var(--positive-soft); border-color: #166534; }
     .warn p, .ok p { color: var(--text); margin: 0.35rem 0; }
+    .scroll { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; font-size: 0.92rem; margin: 0.75rem 0; }
     th, td { text-align: left; padding: 0.45rem 0.55rem; border-bottom: 1px solid var(--border); vertical-align: top; }
     th { color: var(--text); font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -45,94 +47,135 @@
 </head>
 <body>
   <main class="page">
-    <p class="meta">Imaging bench · current as of 10 November 2026</p>
+    <p class="meta">Imaging bench · current as of 11 November 2026</p>
     <h1>Imaging a laptop</h1>
-    <p class="lede">One form on the laptop. Enter the ticket, confirm the person and the software, press Start, and leave it on the imaging cable. The map of how that works is the <a href="imaging-topology.html">imaging topology</a>.</p>
+    <p class="lede">One form on the laptop. Look up the ticket, confirm the person and the software, press Start, and leave it on the imaging cable. Windows 11 and Ubuntu 26.04 both install with Secure Boot on. The map of how it works is the <a href="imaging-topology.html">imaging topology</a>; undo steps are in <a href="recovery.html">imaging recovery</a>.</p>
 
     <div class="card ok">
-      <p>Use this when the laptop is on the imaging network and you can choose network boot. Windows 11 is the path to hand to an employee. Ubuntu 26.04 is built for the next test. No laptop has finished that Ubuntu image yet, so do not hand an Ubuntu laptop out from this bench.</p>
+      <p><strong>Hand the laptop out when the ticket says it is ready.</strong> Every image posts a public note on the ticket when it starts, and a public “finished and ready” or “ran into an issue” note at the end, with an internal note that lists everything that failed. “Ready” means Entra sign-in, Secure Boot, the TPM, disk encryption (Ubuntu) and the apps all came through; one or two failed apps or a missing agent stay in the internal note for a tech.</p>
     </div>
 
     <h2>Before you start</h2>
     <ul>
-      <li>The laptop is plugged into the imaging network. Power stays on. The cable stays in until Windows has finished installing apps.</li>
-      <li>You have a NextDesk ticket number, or the employee’s first and last name. A laptop with no person yet can use Blank, core apps.</li>
-      <li>You can make the laptop network-boot. A normal restart from the disk does not open the form.</li>
+      <li>The laptop is on the imaging network (the dock or USB-C adapter on the imaging cable). Power stays on. The cable stays in until the laptop restarts to the sign-in screen.</li>
+      <li>You have a NextDesk ticket number or the employee’s name. A laptop with no person yet uses <strong>Blank, core apps</strong> (no ticket, so no ticket notes).</li>
+      <li>The BIOS is set as below. You change nothing else for Windows.</li>
     </ul>
+    <div class="scroll"><table>
+      <thead><tr><th>BIOS setting</th><th>Windows</th><th>Ubuntu</th></tr></thead>
+      <tbody>
+        <tr><td>Secure Boot</td><td>On (an old BIOS may need it off, see the model table)</td><td>On. Ubuntu will not encrypt with it off.</td></tr>
+        <tr><td>Microsoft 3rd-party UEFI CA (Dell “Enable Microsoft UEFI CA”, Lenovo “Allow Microsoft 3rd Party UEFI CA”)</td><td>On. The imaging form itself starts through it.</td><td>On</td></tr>
+        <tr><td>TPM</td><td>On</td><td>On. Start clears it at the restart (see TPM below).</td></tr>
+        <tr><td>Absolute (Dell: Security → Absolute)</td><td>Leave as is</td><td><strong>Disable</strong>, never “Permanently Disable”. With Absolute on, Ubuntu installs without encryption.</td></tr>
+        <tr><td>Storage mode (SATA Operation)</td><td>AHCI, or RAID/VMD (WinPE loads the Intel driver)</td><td>AHCI</td></tr>
+      </tbody>
+    </table></div>
 
     <h2>Steps</h2>
     <ol class="steps">
-      <li><strong>Network-boot the laptop.</strong> Choose the UEFI IPv4 network boot. The Nextlink Imaging form should appear. It is a dark screen with two cards, not a blue text menu and not the Ubuntu desktop.</li>
-      <li><strong>Look the person up.</strong> Type the ticket number, or the first name, a space, and the last name. Press Look up. A ticket fills that ticket. A name lists that person’s open tickets. One match fills itself. More than one match waits for you to pick the ticket for this laptop.</li>
-      <li><strong>Read the department and the note.</strong> The department name comes from the ticket. The note says whether the checks came from the employee’s previous laptop, from the department list, or from the core list because that department has no software pack.</li>
-      <li><strong>Leave Windows 11 selected</strong> unless this laptop is an Ubuntu test. You can switch the operating system. Each side keeps its own checks.</li>
-      <li><strong>Check the software.</strong> Search the list. Scroll it. UniFi VPN, Wazuh, Atera, and NextDesk endpoint stay checked. Uncheck anything this person should not get. The previous laptop’s installed software is the list that gets checked when NextDesk has that list. With no previous laptop, the department list is checked.</li>
-      <li><strong>Press Start.</strong> The screen says it saved the choice and is restarting into the imaging network. Leave the laptop alone. For a laptop with no person and no ticket, press Blank, core apps instead. That installs Chrome, Firefox, KeePass, and Earth, and skips the department list. Atera, Wazuh, and UniFi Endpoint still install.</li>
-      <li><strong>The wait screen takes over.</strong> It is full screen. Under “Preparing this PC” it says who the laptop is for, from the choice you just saved. Leave it on the cable. The laptop saves the checked software while that cable still works, then joins Wi-Fi. Near the end it installs the checked apps, then Atera, Wazuh, and the UniFi Endpoint agent. It does not install the opsi client agent. The screen stays up until the laptop reboots to the work sign-in.</li>
-      <li><strong>The sign-in screen says Welcome and the employee’s name.</strong> The first sign-in that is not NextAdmin clears that line and leaves the normal lock screen. Start stays closed. File Explorer does not open by itself. The pinned row is the installed browsers, File Explorer, and UniFi Endpoint. The person can pin more.</li>
+      <li><strong>Network-boot the laptop.</strong> One-time boot menu (Dell F12, Lenovo F12), then the UEFI IPv4 entry for the network adapter (Dell: “USB NIC (IPV4)”). The Nextlink Imaging form appears: a dark screen with two cards.</li>
+      <li><strong>Look the person up.</strong> Type the ticket number, or first and last name, and press Look up. A name lists that person’s open tickets; one match fills the ticket box by itself, more than one waits for you to pick. The box must hold a ticket number before Start; a name is refused.</li>
+      <li><strong>Check the department note and the software.</strong> The department comes from the ticket. The checks come from the person’s previous laptop, else the department list. Uncheck anything this person should not get. Atera, Wazuh and UniFi Endpoint always install.</li>
+      <li><strong>Pick Windows 11 or Ubuntu 26.04 and press Start.</strong> The ticket gets a public “Imaging has started” note when the install really begins.</li>
+      <li><strong>Leave it.</strong> Windows: WinPE downloads and applies the image, Windows setup runs, then the full-screen wait screen installs the apps and agents. The laptop stays awake on its own. Ubuntu: the installer runs unattended and restarts to the sign-in screen, which says “Welcome” and the employee’s name.</li>
+      <li><strong>The laptop restarts once at the end</strong> to the sign-in screen. Windows then installs its updates at the sign-in screen; leave it on and do not sign in for a while. The update result follows as a second internal note.</li>
+      <li><strong>Read the ticket.</strong> Hand the laptop out on “ready”. On “ran into an issue”, the internal note says what to fix.</li>
     </ol>
 
     <h2>What a restart does</h2>
-    <p>Start saves the choice on the imaging host for that laptop’s network address. The file is not on the public boot port. The reboot right after Start is sent to the network once. That boot sees the saved choice, skips the form, and starts the installer for the operating system you picked.</p>
-    <p>Each Start installs once. A later restart, from the disk or from the network, continues the install already under way. A network boot after that one install boot is sent back to the disk. It does not start the install over. The saved choice lasts 6 hours. After that, a network boot shows the form again, so the same laptop can be imaged for someone else.</p>
+    <p>Each Start installs once. While that install runs, a network boot sends the laptop back to its disk so a restart cannot start it over. When the laptop sends its report, the Start is spent and the next network boot shows the form again, so a finished laptop can be re-imaged straight away. A Start that never reports (a laptop switched off mid-install) keeps sending the laptop to its disk for up to 6 hours: ask the imaging owner to clear it, or move <code>/var/lib/imaging-kiosk/decisions/&lt;mac without colons&gt;.json</code> aside on the host.</p>
 
-    <div class="card warn">
-      <p><strong>To show the form again,</strong> delete that laptop’s saved choice on the imaging host, then network-boot. The file is <code>/var/lib/imaging-kiosk/decisions/</code> plus the MAC address with the colons removed, ending in <code>.json</code>. After it is gone, the next network boot opens the empty form.</p>
-    </div>
-
-    <h2>What Windows installs</h2>
-    <table>
-      <thead>
-        <tr><th>Checked on the form</th><th>What the image does</th></tr>
-      </thead>
+    <h2>What gets installed</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>App</th><th>How</th></tr></thead>
       <tbody>
-        <tr><td>Catalog apps such as Chrome, Firefox, KeePass, Earth, PuTTY, WinSCP, Wireshark, WinBox, MobaXterm, The Dude</td><td>Installed during imaging when the laptop can still reach the imaging host. Chrome, The Dude, WinBox, and MobaXterm use a direct installer. The others use winget.</td></tr>
-        <tr><td>Atera, Wazuh</td><td>Installed on every Windows image by their own scripts, whether or not the row is checked.</td></tr>
-        <tr><td>UniFi Endpoint</td><td>Installed on every Windows image by its own script. This is the endpoint agent, not a separate VPN client.</td></tr>
-        <tr><td>UniFi VPN, NextDesk endpoint</td><td>The rows stay checked. There is no installer for them yet, so the image does not add those two packages.</td></tr>
-        <tr><td>Microsoft 365</td><td>Not in the list. Office is not installed by this image.</td></tr>
+        <tr><td>Chrome, Firefox, KeePass, Earth, Angry IP, The Dude, WinBox, NetSetMan, PuTTY, WinSCP, Wireshark</td><td>From the app cache on the imaging host (refreshed nightly). Fast and independent of the internet.</td></tr>
+        <tr><td>MobaXterm and other winget-only apps</td><td>winget from the internet. Mobatek’s download server has been unreachable since 10 Nov, so MobaXterm fails cleanly after a few minutes and shows in the internal note.</td></tr>
+        <tr><td>AMS Client (Technical Support and Senior Technical Support)</td><td>One copy in <code>C:\AMS</code> with an “AMS Client” shortcut on the desktop. Users can write there; it is not under the profile, so OneDrive does not upload it.</td></tr>
+        <tr><td>Atera, Wazuh, UniFi Endpoint</td><td>Every image, by their own steps.</td></tr>
+        <tr><td>UniFi VPN, NextDesk endpoint</td><td>Rows stay checked; no installer yet.</td></tr>
       </tbody>
-    </table>
-    <p>The checked list is saved before Wi-Fi starts, while the imaging cable still has an address on <code>192.168.26</code>. If that save fails, the image installs Chrome, Firefox, KeePass, and Earth Pro and continues. Leave the imaging cable connected until the apps are done.</p>
-    <p>If one checked app fails, the installer tries the set once more. It does not mark the apps finished until that pass succeeds, so a later boot tries again.</p>
+    </table></div>
+    <p>No single app can hold the image up: an installer that runs 15 minutes is stopped and recorded as failed, and the next app starts. Each app’s start and end is sent to the imaging host, so a stalled image names the app.</p>
 
-    <h2>When something looks wrong</h2>
-    <table>
-      <thead>
-        <tr><th>What you see</th><th>What to do</th></tr>
-      </thead>
+    <h2>Troubleshooting</h2>
+
+    <h3>Network boot</h3>
+    <div class="scroll"><table>
+      <thead><tr><th>What you see</th><th>What to do</th></tr></thead>
       <tbody>
-        <tr><td>The old operating system, or Windows setup, with no form</td><td>Network-boot. A disk restart does not open the form.</td></tr>
-        <tr><td>The form never appears and Windows setup starts immediately</td><td>A choice is already saved for this laptop. Delete it, then network-boot.</td></tr>
-        <tr><td>Look up stays on Searching, or the note clears</td><td>The imaging host could not read NextDesk. You can still type the ticket number, pick the department, check the software, and press Start. The checks will not be filled from the ticket until lookup works.</td></tr>
-        <tr><td>The department name is right, and the note says there is no software pack</td><td>NextDesk has the department. The imaging catalog has no pack under that name, so the core apps are checked. Change the checks before Start if this person needs more.</td></tr>
-        <tr><td>A blue text menu</td><td>The form failed to start. That menu is only the fallback. Network-boot once more. If it stays on the blue menu, stop and report it.</td></tr>
-        <tr><td>Ubuntu is selected and the language screen appears</td><td>The Ubuntu installer is not finished. Switch the form back to Windows 11 for a laptop that has to be handed out.</td></tr>
+        <tr><td>Windows or the old OS starts, no form</td><td>You booted the disk. Use the one-time boot menu and the IPv4 network entry.</td></tr>
+        <tr><td>“Start PXE over IPv4” then Dell SupportAssist starts scanning</td><td>The firmware refused the Windows boot manager. The BIOS is too old to trust Microsoft’s 2023 certificate (seen on a Vostro 5502, BIOS 1.13.1). Update the BIOS, or turn Secure Boot off, image, and turn it back on afterwards. The installer detects the old BIOS and installs a boot manager it trusts, so Windows still starts with Secure Boot back on.</td></tr>
+        <tr><td>“bad shim lock signature … Secure Boot blocked the opsi path”</td><td>The old opsi Windows path was chosen. Every Windows Start now uses WinPE; network-boot again. If it repeats, ask the imaging owner (the WinPE default is <code>KIOSK_WINDOWS_PATH=winpe</code>).</td></tr>
+        <tr><td>“This laptop already started its install. Booting the disk.”</td><td>An install is still running for this laptop (no report yet). Let it finish. If it was abandoned, have the Start cleared (see What a restart does).</td></tr>
+        <tr><td>“Nextlink Imaging could not start this boot” with errors above it</td><td>Photograph the screen and network-boot once more. If it repeats, report it with the photo.</td></tr>
+        <tr><td>The form shows but Look up stays on Searching</td><td>NextDesk lookup is down. You can still type the ticket number, choose the department and software, and Start.</td></tr>
+        <tr><td>Start says “choose a ticket from the list”</td><td>A name is in the ticket box. Press Look up and tap the ticket, or type the ticket number.</td></tr>
       </tbody>
-    </table>
+    </table></div>
 
-    <h2>Ubuntu test</h2>
-    <p><strong>Before an Ubuntu image, in the BIOS:</strong> Secure Boot on and TPM on. Lenovo also needs “Allow Microsoft 3rd Party UEFI CA” on. Ubuntu only encrypts with an unowned TPM, and a laptop that ran Windows with BitLocker still owns its TPM, so pressing Start for Ubuntu asks the firmware to clear the TPM at the restart. If the laptop then asks to clear the TPM, accept it (often F12). With “PPI Bypass for Clear Commands” (Dell) or “Physical Presence for Clear” off (Lenovo) set in the BIOS it does not ask. If the TPM is still owned anyway, the installer stops within a minute and says so; then clear it in the BIOS (Dell: Security → TPM 2.0 Security → Clear) and image again.</p>
-    <p>Pick Ubuntu 26.04 on the form and press Start. The installer uses the seed on the imaging host. It does not ask for a language. The installer encrypts the whole disk and seals it to the TPM, so the laptop starts without a disk password. Secure Boot has to be on. The installer creates hidden NextAdmin, and the first boot turns on Entra sign-in. The dock sits on the bottom with Chrome, Teams, and Outlook pinned. Checked software installs as the Linux program named on the form: The Dude as Zenmap, MobaXterm as Remmina, WinSCP as FileZilla.</p>
-    <p>On its first boot the laptop sends the installer’s disk recovery key to the imaging host, which keeps it for that laptop’s MAC and emails a NextPass link to the imaging owner. Imaging that same laptop again replaces the old key. Windows does not get a recovery key from this host.</p>
-    <p>The Ubuntu image denies new inbound connections, masks SSH, and turns off Avahi, rpcbind, and Windows discovery. Hibernate and hybrid sleep are masked. OneDrive still needs the employee to approve it once. No laptop has finished this image.</p>
+    <h3>TPM</h3>
+    <div class="scroll"><table>
+      <thead><tr><th>What you see</th><th>What to do</th></tr></thead>
+      <tbody>
+        <tr><td>After an <strong>Ubuntu</strong> Start: “press F12 to clear the TPM, ESC to continue”</td><td><strong>Press F12.</strong> Start asked for this clear: Ubuntu only encrypts with an empty TPM, and a laptop that ran Windows/BitLocker still owns it. With Dell “PPI Bypass for Clear Commands” on (or Lenovo “Physical Presence for Clear” off) it does not ask.</td></tr>
+        <tr><td>The same prompt on a <strong>Windows</strong> image</td><td>Press ESC. Windows does not need it cleared.</td></tr>
+        <tr><td>Ubuntu installer stops within a minute: the TPM cannot be used</td><td>The TPM is still owned. Clear it in the BIOS (Dell: Security → TPM 2.0 Security → Clear; Lenovo: Security → Security Chip → Clear), then image again.</td></tr>
+        <tr><td>Ubuntu laptop asks for a recovery key at power-on</td><td>Something changed what the TPM measures (BIOS update outside Ubuntu, Secure Boot toggled, TPM cleared, Absolute turned on). Type the key from the NextPass email for that laptop. The data is safe.</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Ubuntu</h3>
+    <div class="scroll"><table>
+      <thead><tr><th>What you see</th><th>What to do</th></tr></thead>
+      <tbody>
+        <tr><td>Ticket: “the disk is not encrypted”</td><td>Absolute was on, the TPM was owned, or Secure Boot was off. Fix the BIOS (Absolute → Disable, TPM clear, Secure Boot on) and image again.</td></tr>
+        <tr><td>Ticket: “Entra sign-in is not set up”; no Microsoft Entra ID option at sign-in</td><td>The laptop could not download the Entra add-on from the Snap Store. On the laptop as nextadmin, once the store is reachable: <code>sudo systemctl restart nextlink-entra-authd</code>. When the imaging host has its own copy (refreshed nightly) this fixes itself during imaging.</td></tr>
+        <tr><td>Ticket: “the disk recovery key is not on file”</td><td>Do not hand it out. Re-run the first-boot step: <code>sudo rm /var/lib/linux-encryption-setup/report-sent &amp;&amp; sudo systemctl start imaging-firstboot</code>.</td></tr>
+        <tr><td>No report on the ticket long after the install</td><td>Sign in as nextadmin and run <code>systemctl status imaging-firstboot nextlink-entra-authd</code>. The report can take up to 15 minutes while Entra retries.</td></tr>
+        <tr><td>No “Welcome &lt;name&gt;” on the sign-in screen</td><td>Shown only until the first employee sign-in. Missing from the start means the form had no person (Blank).</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Windows</h3>
+    <div class="scroll"><table>
+      <thead><tr><th>What you see</th><th>What to do</th></tr></thead>
+      <tbody>
+        <tr><td>Entra sign-in fails right after the wait screen appears</td><td>Normal. Entra join finishes during the post-install. Wait for the one restart at the end, then sign in.</td></tr>
+        <tr><td>Wait screen sits on one app for a long time</td><td>The app gets 15 minutes, then it is skipped. If the laptop was asleep or the lid closed, it resumes when woken.</td></tr>
+        <tr><td>Ticket: one or two apps failed</td><td>Still “ready”. Install them by hand or re-image later.</td></tr>
+        <tr><td>BitLocker off in the report</td><td>Expected. It turns on after the first work sign-in; check it says On.</td></tr>
+        <tr><td>WinPE says it found no internal disk</td><td>Storage mode: set SATA Operation to AHCI, or report the model so its storage driver can be added.</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Models</h3>
+    <div class="scroll"><table>
+      <thead><tr><th>Model</th><th>Windows</th><th>Ubuntu</th></tr></thead>
+      <tbody>
+        <tr><td>Dell XPS 13 9315</td><td>Works, Secure Boot on (11 Nov).</td><td>Works, Secure Boot on. Uses a USB-C adapter; the host matches it by serial.</td></tr>
+        <tr><td>Dell Latitude 7320 Detachable</td><td>Works, Secure Boot on (11 Nov).</td><td>Works with <strong>Absolute disabled</strong> and the TPM cleared.</td></tr>
+        <tr><td>Dell Vostro 5502 (BIOS 1.13.1)</td><td>Firmware refuses WinPE with Secure Boot on. Update the BIOS, or image with Secure Boot off and turn it on after.</td><td>Not tried.</td></tr>
+        <tr><td>Lenovo</td><td>WinPE not yet tried on a Lenovo. “Allow Microsoft 3rd Party UEFI CA” must be on.</td><td>“Allow Microsoft 3rd Party UEFI CA” on; clear the TPM if asked.</td></tr>
+      </tbody>
+    </table></div>
+
+    <h2>Ubuntu notes</h2>
+    <p>The installer encrypts the whole disk and seals it to the TPM, so the laptop starts without a disk password; the employee signs in with Entra. On the first boot the laptop makes a new disk recovery key, files it with the imaging host, and the host emails a NextPass link to the imaging owner. Normal Ubuntu updates keep working; a BIOS update outside Ubuntu, a Secure Boot change or a TPM clear will ask for that key once. The desktop is dark, has no welcome tour, and the dock holds Chrome, Teams and Outlook. Checked software installs as the Linux program on the form (The Dude as Zenmap, MobaXterm as Remmina, WinSCP as FileZilla). The image blocks new inbound connections and masks SSH.</p>
 
     <h2>After imaging</h2>
-    <p>After the restart to the sign-in screen, leave the laptop plugged in and on for a while. Windows installs its updates while it waits and may restart on its own; it stops as soon as someone signs in. The result is added to the ticket.</p>
-    <p>Every Windows and Ubuntu image sends a report to the imaging host just before it hands off: serial, model, the person, Entra sign-in, Secure Boot, TPM, disk encryption, apps that failed, and agents that are missing. The host keeps every report in <code>/var/lib/imaging-kiosk/reports</code> and writes it as an internal note on the laptop’s NextDesk ticket. If an install started 3 hours ago and sent nothing, the host notes that on the ticket instead. Notes need the ImagingWrite role in NextDesk, which does not exist yet; until then the reports are only on the host.</p>
-
-    <p>If imaging stops working, the undo steps and the host rebuild are in <a href="recovery.html">imaging recovery</a>.</p>
+    <p>Every image reports serial, model, person, Entra, Secure Boot, TPM, encryption, apps and agents to the imaging host (<code>/var/lib/imaging-kiosk/reports</code>) and to the ticket. An install that started 3 hours ago and sent nothing gets an internal note with the last step seen and a public “ran into an issue” note.</p>
 
     <h2>Not done yet</h2>
     <ul>
-      <li>No laptop has finished this build. Zachariah Miller’s laptop, NL-J0DTRV3, still has only Chrome, Firefox, KeePass, and Earth until it is imaged again.</li>
-      <li>UniFi VPN and the NextDesk endpoint stay checked and have no installer.</li>
-      <li>A new hire is still added to the join group by hand for the day of the first Entra sign-in.</li>
-      <li>The USB sticks are the old seed. Windows imaging stays on the network. Do not put the NextAdmin password, the Atera link, or the Wazuh password on a stick.</li>
-      <li>A dock does not set the BIOS. The laptop still has to network-boot once.</li>
+      <li>WinPE on a Lenovo, and NetSetMan’s silent install on a full run.</li>
+      <li>MobaXterm and the Ubuntu Entra add-on depend on two outside download sites that were down on 11 Nov; the Entra add-on gets a local copy once the store is back.</li>
+      <li>UniFi VPN and the NextDesk endpoint have no installer.</li>
+      <li>A new hire is still added to the join group by hand for the first Entra sign-in.</li>
     </ul>
 
-    <p>Update this page in the same change that changes the bench steps. The 2 November plan map is <a href="imaging-topology-plan-2026-11-02.html">imaging-topology-plan-2026-11-02.html</a>.</p>
+    <p>Update this page in the same change that changes the bench steps. Employee sign-in guides: Windows and Ubuntu “Signing in” pages in the Tech SOP folder.</p>
   </main>
 </body>
 </html>
