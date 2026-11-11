@@ -40,6 +40,10 @@ def main() -> None:
     assert "--no-first-run" in teams
     assert f"Icon={TEAMS_ICON}" in teams
     assert f"Icon={OUTLOOK_ICON}" in outlook
+    # Wayland: Chrome ignores --class and names an --app window chrome-<host>_<path>-<profile>.
+    # The launcher must carry that name or GNOME shows a grey cog instead of the icon.
+    assert "StartupWMClass=chrome-teams.microsoft.com__-Default" in teams
+    assert "StartupWMClass=chrome-outlook.office.com__-Default" in outlook
     prefs = chrome_initial_preferences()
     assert "skip_first_run_ui" in prefs
     policy = chrome_managed_policy()

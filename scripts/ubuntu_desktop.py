@@ -55,6 +55,18 @@ def session_defaults() -> str:
     )
 
 
+def chrome_app_id(url: str, profile: str = "Default") -> str:
+    """The name Chrome gives an --app window on Wayland: chrome-<host>_<path, / as _>-<profile>.
+
+    Chrome ignores --class on Wayland, so the launcher's StartupWMClass must be this,
+    or GNOME cannot match the window and shows a grey cog instead of the app icon.
+    """
+    from urllib.parse import urlsplit
+    parts = urlsplit(url)
+    path = (parts.path or "/").replace("/", "_")
+    return f"chrome-{parts.hostname}_{path}-{profile}"
+
+
 def desktop_file(name: str, url: str, wm_class: str, icon: str) -> str:
     return (
         "[Desktop Entry]\n"
@@ -64,7 +76,7 @@ def desktop_file(name: str, url: str, wm_class: str, icon: str) -> str:
         "Terminal=false\n"
         "Type=Application\n"
         f"Icon={icon}\n"
-        f"StartupWMClass={wm_class}\n"
+        f"StartupWMClass={chrome_app_id(url)}\n"
         "Categories=Network;\n"
     )
 
