@@ -85,7 +85,16 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get install -y authd
-snap install authd-msentraid
+# Right after the first boot snapd is still initializing the device and cannot reach the
+# store ("unable to contact snap store", D3SFJR3 11 Nov). Wait for the seed, then retry.
+snap wait system seed.loaded 2>/dev/null || true
+for try in $(seq 1 20); do
+  snap list authd-msentraid >/dev/null 2>&1 && break
+  snap install authd-msentraid && break
+  echo "authd-msentraid not installed yet (try $try of 20); retrying in 30 seconds"
+  sleep 30
+done
+snap list authd-msentraid >/dev/null 2>&1 || { echo "ABORT: authd-msentraid could not be installed" >&2; exit 1; }
 
 conf=/var/snap/authd-msentraid/current/broker.conf
 if [ ! -f "$conf" ]; then

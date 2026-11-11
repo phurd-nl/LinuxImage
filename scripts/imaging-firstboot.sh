@@ -90,7 +90,11 @@ mokutil --sb-state 2>/dev/null | grep -qi enabled && secure_boot=true
 [ "$secure_boot" = true ] || problems+=("Secure Boot is off.")
 tpm=false; [ -e /dev/tpmrm0 ] && tpm=true
 [ "$tpm" = true ] || problems+=("No TPM found.")
-entra=false; snap list authd-msentraid >/dev/null 2>&1 && entra=true
+entra=false
+for _ in $(seq 1 36); do  # up to 3 minutes: the Entra broker can still be installing
+  snap list authd-msentraid >/dev/null 2>&1 && { entra=true; break; }
+  sleep 5
+done
 [ "$entra" = true ] || problems+=("Entra sign-in (authd) is not installed. The employee cannot sign in with a work account.")
 if lspci 2>/dev/null | grep -qi nvidia; then
   if lsmod | grep -q '^nvidia '; then checks+=("NVIDIA driver loaded.")

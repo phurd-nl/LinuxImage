@@ -149,6 +149,7 @@ Description=Install Entra login
 After=snapd.seeded.service network-online.target linux-encryption-unattended.service
 Wants=snapd.seeded.service network-online.target
 ConditionPathExists=!/var/lib/linux-encryption-setup/entra-authd-installed
+StartLimitIntervalSec=0
 
 [Service]
 Type=oneshot
@@ -159,7 +160,10 @@ ExecStartPre=/bin/sh -c 'echo "Installing sign-in." >/dev/console'
 ExecStart=/opt/linux-encryption-setup/scripts/setup-entra-authd.sh --apply
 ExecStartPost=/usr/bin/touch /var/lib/linux-encryption-setup/entra-authd-installed
 RemainAfterExit=yes
-TimeoutStartSec=300
+# The script retries the store for up to 10 minutes; if it still fails, try again later.
+TimeoutStartSec=900
+Restart=on-failure
+RestartSec=120
 StandardOutput=journal+console
 StandardError=journal+console
 
