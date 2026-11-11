@@ -112,7 +112,9 @@ ConditionPathExists=!/var/lib/linux-encryption-setup/report-sent
 StartLimitIntervalSec=0
 
 [Service]
-Type=oneshot
+# simple, not oneshot: a oneshot in multi-user.target holds the target until it exits, and
+# AteraAgent (after graphical.target) then cannot start while the report waits for it (11 Nov).
+Type=simple
 ExecStart=/opt/linux-encryption-setup/scripts/imaging-firstboot.sh
 Restart=on-failure
 RestartSec=120
@@ -152,16 +154,14 @@ ConditionPathExists=!/var/lib/linux-encryption-setup/entra-authd-installed
 StartLimitIntervalSec=0
 
 [Service]
-Type=oneshot
+# simple, not oneshot: the store retries can take 10 minutes and must not hold up the boot.
+Type=simple
 Environment=IMAGE_HARDEN_CONFIRM=1
 Environment=ENTRA_TENANT_ID=$ENTRA_TENANT_ID
 Environment=ENTRA_CLIENT_ID=$ENTRA_CLIENT_ID
 ExecStartPre=/bin/sh -c 'echo "Installing sign-in." >/dev/console'
-ExecStart=/opt/linux-encryption-setup/scripts/setup-entra-authd.sh --apply
-ExecStartPost=/usr/bin/touch /var/lib/linux-encryption-setup/entra-authd-installed
-RemainAfterExit=yes
+ExecStart=/bin/sh -c '/opt/linux-encryption-setup/scripts/setup-entra-authd.sh --apply && touch /var/lib/linux-encryption-setup/entra-authd-installed'
 # The script retries the store for up to 10 minutes; if it still fails, try again later.
-TimeoutStartSec=900
 Restart=on-failure
 RestartSec=120
 StandardOutput=journal+console

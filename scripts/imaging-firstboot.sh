@@ -91,7 +91,7 @@ mokutil --sb-state 2>/dev/null | grep -qi enabled && secure_boot=true
 tpm=false; [ -e /dev/tpmrm0 ] && tpm=true
 [ "$tpm" = true ] || problems+=("No TPM found.")
 entra=false
-for _ in $(seq 1 36); do  # up to 3 minutes: the Entra broker can still be installing
+for _ in $(seq 1 144); do  # up to 12 minutes: the Entra setup retries the store for 10
   snap list authd-msentraid >/dev/null 2>&1 && { entra=true; break; }
   sleep 5
 done
