@@ -104,7 +104,8 @@ chmod 755 "$INSTALL_ROOT/scripts/imaging-firstboot.sh" 2>/dev/null || true
 cat > /etc/systemd/system/imaging-firstboot.service << 'UNIT'
 [Unit]
 Description=File the disk recovery key and send the imaging report
-After=network-online.target snapd.seeded.service nextlink-entra-authd.service
+# After the agents too, so the report does not check Atera/Wazuh before they start.
+After=network-online.target snapd.seeded.service nextlink-entra-authd.service AteraAgent.service wazuh-agent.service
 Wants=network-online.target
 ConditionPathExists=!/var/lib/linux-encryption-setup/report-sent
 StartLimitIntervalSec=0

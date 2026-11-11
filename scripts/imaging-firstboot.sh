@@ -99,7 +99,7 @@ fi
 nmcli -t -f NAME connection show 2>/dev/null | grep -qx "Nextlink_Corp" || problems+=("Office Wi-Fi (Nextlink_Corp) is not configured.")
 # Agents, shown on the ticket like Windows. Services can still be starting on first boot.
 atera=false; wazuh=false; unifi=false
-for _ in $(seq 1 12); do
+for _ in $(seq 1 36); do  # up to 3 minutes
   systemctl is-active --quiet AteraAgent.service && atera=true
   systemctl is-active --quiet wazuh-agent.service && wazuh=true
   [ "$atera" = true ] && [ "$wazuh" = true ] && break
