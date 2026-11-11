@@ -88,9 +88,30 @@ apt-get install -y authd
 # Right after the first boot snapd is still initializing the device and cannot reach the
 # store ("unable to contact snap store", D3SFJR3 11 Nov). Wait for the seed, then retry.
 snap wait system seed.loaded 2>/dev/null || true
+# The imaging host keeps a copy (base snap + broker, each with its .assert) for when the store
+# cannot be reached from the office network (11 Nov). snap ack checks Canonical's signatures,
+# so the offline install is verified the same way as one from the store.
+install_from_imaging_host() {
+  local host="${IMAGING_FILES:-http://192.168.26.106:8090}/snaps" dir name
+  dir=$(mktemp -d)
+  curl -fsS --max-time 20 -o "$dir/files.txt" "$host/files.txt" || { rm -rf "$dir"; return 1; }
+  while read -r name; do
+    [ -n "$name" ] || continue
+    curl -fsS --max-time 300 -o "$dir/$name.assert" "$host/$name.assert" &&
+      curl -fsS --max-time 300 -o "$dir/$name.snap" "$host/$name.snap" &&
+      snap ack "$dir/$name.assert" &&
+      { snap list "${name%_*}" >/dev/null 2>&1 || snap install "$dir/$name.snap"; } || { rm -rf "$dir"; return 1; }
+  done < "$dir/files.txt"
+  rm -rf "$dir"
+  snap list authd-msentraid >/dev/null 2>&1
+}
 for try in $(seq 1 20); do
   snap list authd-msentraid >/dev/null 2>&1 && break
   snap install authd-msentraid && break
+  if [ "$try" -ge 3 ] && install_from_imaging_host; then
+    echo "authd-msentraid installed from the imaging host's copy (the store was not reachable)"
+    break
+  fi
   echo "authd-msentraid not installed yet (try $try of 20); retrying in 30 seconds"
   sleep 30
 done
