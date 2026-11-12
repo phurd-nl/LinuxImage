@@ -13,6 +13,8 @@ apt-get install -y google-chrome-stable unattended-upgrades ubuntu-drivers-commo
   || apt-get install -y unattended-upgrades ubuntu-drivers-common fwupd || log "base packages incomplete"
 apt-get install -y onedrive || log "OneDrive package is not in this Ubuntu archive"
 apt-get install -y nautilus || log "Files was not installed"
+# The OneDrive icon shows its sign-in code with zenity and copies it with wl-copy.
+apt-get install -y zenity wl-clipboard libnotify-bin || log "zenity / wl-clipboard did not install"
 # Remmina replaces MobaXterm. FileZilla replaces WinSCP. Neither has a Linux build.
 apt-get install -y remmina filezilla || log "Remmina or FileZilla did not install"
 
@@ -29,7 +31,8 @@ sys.path.insert(0, sys.argv[1])
 from ubuntu_desktop import (
     OUTLOOK_ICON, OUTLOOK_URL, TEAMS_ICON, TEAMS_URL,
     chrome_initial_preferences, chrome_managed_policy, desktop_file,
-    onedrive_config, session_defaults, skip_new_laptop_questions, update_policy,
+    onedrive_config, onedrive_connect_script, onedrive_desktop_file,
+    session_defaults, skip_new_laptop_questions, update_policy,
 )
 
 root = pathlib.Path("/")
@@ -37,6 +40,12 @@ apps = root / "usr/share/applications"
 apps.mkdir(parents=True, exist_ok=True)
 (apps / "teams-pwa.desktop").write_text(desktop_file("Microsoft Teams", TEAMS_URL, "teams-pwa", TEAMS_ICON))
 (apps / "outlook-pwa.desktop").write_text(desktop_file("Outlook", OUTLOOK_URL, "outlook-pwa", OUTLOOK_ICON))
+# OneDrive icon: first click signs in with a code, then OneDrive syncs at every login.
+connect = root / "usr/local/bin/nextlink-onedrive"
+connect.parent.mkdir(parents=True, exist_ok=True)
+connect.write_text(onedrive_connect_script())
+connect.chmod(0o755)
+(apps / "nextlink-onedrive.desktop").write_text(onedrive_desktop_file())
 
 db = root / "etc/dconf/db/local.d"
 db.mkdir(parents=True, exist_ok=True)
@@ -45,8 +54,8 @@ profile = root / "etc/dconf/profile"
 profile.mkdir(parents=True, exist_ok=True)
 (profile / "user").write_text("user-db:user\nsystem-db:local\n")
 
-# OneDrive stays configured for ~/OneDrive. It does not start at login.
-# Opening it here would show a Microsoft sign-in before the employee asks for it.
+# OneDrive is configured for ~/OneDrive but not started until the person clicks the OneDrive
+# icon (nextlink-onedrive) and signs in; that enables onedrive.service for later logins.
 skel = root / "etc/skel/.config/onedrive"
 skel.mkdir(parents=True, exist_ok=True)
 (skel / "config").write_text(onedrive_config())

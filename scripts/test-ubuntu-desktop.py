@@ -14,6 +14,8 @@ from ubuntu_desktop import (
     dock_defaults,
     login_banner,
     onedrive_config,
+    onedrive_connect_script,
+    onedrive_desktop_file,
     session_defaults,
     skip_new_laptop_questions,
     update_policy,
@@ -81,6 +83,20 @@ def main() -> None:
         skip_new_laptop_questions(root)
         gdm = (root / "etc/gdm3/custom.conf").read_text()
         assert gdm == "[daemon]\nAutomaticLoginEnable=false\nInitialSetupEnable=false\n\n[security]\n"
+    # OneDrive: sign in once with a device code, then it syncs at every login.
+    assert "use_device_auth = \"true\"" in onedrive_config()
+    assert "nextlink-onedrive.desktop" in dock_defaults()
+    launcher = onedrive_desktop_file()
+    assert "Exec=/usr/local/bin/nextlink-onedrive" in launcher and "Name=OneDrive" in launcher
+    script = onedrive_connect_script()
+    assert script.startswith("#!/bin/bash")
+    assert "refresh_token" in script                          # already connected: just open the folder
+    assert "Enter the following code when prompted" in script  # the client's own device-code line
+    assert "microsoft.com/devicelogin" in script
+    assert "systemctl --user enable --now onedrive.service" in script
+    assert "zenity" in script
+    shell = Path(__file__).with_name("ubuntu-desktop.sh").read_text()
+    assert "nextlink-onedrive" in shell and "zenity" in shell
     config = onedrive_config()
     assert 'application_id = "ab87c385-2754-4f2e-980b-2384d0fdc9d1"' in config
     assert 'azure_tenant_id = "143673a5-ff46-4d23-8255-b4ef07861814"' in config

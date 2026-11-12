@@ -21,8 +21,11 @@ ONEDRIVE_CLIENT_ID = "ab87c385-2754-4f2e-980b-2384d0fdc9d1"
 ONEDRIVE_TENANT_ID = "143673a5-ff46-4d23-8255-b4ef07861814"
 
 
+ONEDRIVE = "nextlink-onedrive.desktop"
+
+
 def dock_defaults() -> str:
-    pins = ", ".join(f"'{name}'" for name in (CHROME, TEAMS, OUTLOOK, FILES))
+    pins = ", ".join(f"'{name}'" for name in (CHROME, TEAMS, OUTLOOK, ONEDRIVE, FILES))
     return (
         "[org/gnome/shell]\n"
         f"favorite-apps=[{pins}]\n"
@@ -195,7 +198,75 @@ def onedrive_config() -> str:
         'sync_dir = "~/OneDrive"\n'
         'monitor_interval = "300"\n'
         "disable_notifications = false\n"
+        # Sign-in shows a short code for microsoft.com/devicelogin (work accounts only).
+        'use_device_auth = "true"\n'
     )
+
+
+def onedrive_desktop_file() -> str:
+    return (
+        "[Desktop Entry]\n"
+        "Name=OneDrive\n"
+        "Comment=Work files in OneDrive\n"
+        "Exec=/usr/local/bin/nextlink-onedrive\n"
+        "Terminal=false\n"
+        "Type=Application\n"
+        "Icon=folder-remote\n"
+        "Categories=Network;FileTransfer;\n"
+    )
+
+
+def onedrive_connect_script() -> str:
+    """The OneDrive icon. First time: sign in with a code, then sync at every login.
+
+    The abraunegg client, with use_device_auth, prints "Enter the following code when
+    prompted: XXXX", waits for the approval, saves refresh_token and exits. Its packaged
+    user service (onedrive.service, --monitor) then keeps ~/OneDrive in sync.
+    """
+    return r'''#!/bin/bash
+# OneDrive for this user. Sign in once with the work account; it syncs at every login after.
+set -u
+cfg="$HOME/.config/onedrive"
+url="https://microsoft.com/devicelogin"
+title="OneDrive"
+if [ -s "$cfg/refresh_token" ]; then
+    systemctl --user enable --now onedrive.service >/dev/null 2>&1
+    mkdir -p "$HOME/OneDrive"
+    exec xdg-open "$HOME/OneDrive"
+fi
+mkdir -p "$cfg"
+[ -f "$cfg/config" ] || cp /etc/skel/.config/onedrive/config "$cfg/config"
+grep -q '^use_device_auth' "$cfg/config" || echo 'use_device_auth = "true"' >> "$cfg/config"
+log=$(mktemp)
+onedrive > "$log" 2>&1 &
+pid=$!
+code=""
+for _ in $(seq 1 45); do
+    code=$(sed -n 's/.*Enter the following code when prompted: *\([A-Za-z0-9-]*\).*/\1/p' "$log" | head -n 1)
+    [ -n "$code" ] && break
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 1
+done
+if [ -z "$code" ]; then
+    zenity --error --title="$title" --width=420 --text="OneDrive could not start the sign-in. Check the internet connection and try again.\n\n$(tail -n 4 "$log")"
+    rm -f "$log"; exit 1
+fi
+printf '%s' "$code" | wl-copy 2>/dev/null
+xdg-open "$url" >/dev/null 2>&1 &
+zenity --info --title="$title" --width=440 --text="Connect OneDrive to your work account.\n\nA browser window opened at $url\nEnter this code (it is already copied):\n\n<span size='xx-large'><b>$code</b></span>\n\nSign in with your work email and approve it on your phone.\nThis window can be closed." &
+note=$!
+wait "$pid"
+kill "$note" 2>/dev/null
+if [ -s "$cfg/refresh_token" ]; then
+    systemctl --user enable --now onedrive.service >/dev/null 2>&1
+    mkdir -p "$HOME/OneDrive"
+    notify-send -i folder-remote "OneDrive is connected" "Your files sync to the OneDrive folder in Home." 2>/dev/null
+    xdg-open "$HOME/OneDrive"
+else
+    zenity --error --title="$title" --width=420 --text="OneDrive was not connected. Click the OneDrive icon to try again.\n\n$(tail -n 4 "$log")"
+fi
+rm -f "$log"
+'''
 
 
 def update_policy(codename: str) -> str:
