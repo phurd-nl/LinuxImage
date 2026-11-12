@@ -8,8 +8,8 @@
 # available. This is not silent single sign-on, and it does not replace the
 # wizard password that opens the LUKS volume.
 #
-# allowed_users is OWNER plus IT (linux-admins.txt); owner is the assigned person's work
-# account from the imaging ticket, or the first sign-in on a blank laptop (review H1).
+# allowed_users is ALL and owner is empty: any account the Entra app accepts can sign in,
+# like Windows. Restrict who that is with "Assignment required" on the Entra app.
 # Sudo is the Entra group linux-sudo (sudoers drop-in), not this setting. Offline
 # login uses the local password authd asks for when the person did not
 # type the Entra password.
@@ -139,15 +139,11 @@ else
   printf '\n[msentraid]\nregister_device = true\n' >> "$conf"
 fi
 
-# Who may sign in (security review H1). Only this laptop's owner and IT:
-#  - owner: the assigned person's work account from the imaging ticket. A blank laptop has no
-#    owner yet, so authd makes the first account that signs in the owner.
-#  - IT admins: listed in linux-admins.txt from the imaging host (one email per line).
-sel=/var/lib/linux-encryption-setup/kiosk-selection.json
-owner_email=$(python3 -c 'import json,sys; print((json.load(open(sys.argv[1])).get("email") or "").strip().lower())' "$sel" 2>/dev/null || true)
-admins=$(grep -hoE '^[^#[:space:]]+@[^[:space:]]+' /opt/linux-encryption-setup/linux-admins.txt 2>/dev/null | tr 'A-Z' 'a-z' | paste -sd, -)
-NL_ALLOWED="OWNER${admins:+, $admins}"
-NL_OWNER="${owner_email:-\"\"}"
+# Who may sign in: any account the Entra app accepts, like Windows (decision 12 Nov 2026,
+# after security review H1). Limit who that is with "Assignment required" on the Entra app.
+# Home folders are private to each person; admin is only linux-sudo and NextAdmin.
+NL_ALLOWED="ALL"
+NL_OWNER='""'
 export NL_ALLOWED NL_OWNER
 python3 - "$conf" <<'PY'
 import pathlib, sys
@@ -237,6 +233,6 @@ SystemAccount=true
 EOF
 
 echo "Entra login is configured. The login screen asks for user@domain."
-echo "Sign-in: owner ${NL_OWNER} and IT (${NL_ALLOWED}). A blank laptop's first sign-in becomes the owner."
+echo "Any account the Entra app accepts can sign in (limit it with Assignment required in Entra)."
 echo "The device registers when the imaging login succeeds, not in this script."
 echo "The login screen is Entra. The first password sign-in replaces the install disk key."

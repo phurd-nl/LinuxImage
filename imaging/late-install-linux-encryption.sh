@@ -67,8 +67,6 @@ if fetch_extra setup-wifi.sh "$INSTALL_ROOT/scripts/setup-wifi.sh"; then
   bash "$INSTALL_ROOT/scripts/setup-wifi.sh" || echo "WARN: Wi-Fi not configured"
 fi
 fetch_extra imaging-firstboot.sh "$INSTALL_ROOT/scripts/imaging-firstboot.sh" || true
-# IT accounts that may sign in to every Ubuntu laptop besides its owner (review H1). Optional.
-fetch_extra linux-admins.txt "$INSTALL_ROOT/linux-admins.txt" || true
 chmod 755 "$INSTALL_ROOT/scripts/imaging-firstboot.sh" 2>/dev/null || true
 cat > /etc/systemd/system/imaging-firstboot.service << 'UNIT'
 [Unit]
