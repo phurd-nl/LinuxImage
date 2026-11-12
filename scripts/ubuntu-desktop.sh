@@ -31,7 +31,7 @@ sys.path.insert(0, sys.argv[1])
 from ubuntu_desktop import (
     OUTLOOK_ICON, OUTLOOK_URL, TEAMS_ICON, TEAMS_URL,
     chrome_initial_preferences, chrome_managed_policy, desktop_file,
-    onedrive_config, onedrive_connect_script, onedrive_desktop_file,
+    firefox_policy, onedrive_config, onedrive_connect_script, onedrive_desktop_file,
     session_defaults, skip_new_laptop_questions, update_policy,
 )
 
@@ -69,6 +69,9 @@ chrome.mkdir(parents=True, exist_ok=True)
 managed = chrome / "policies/managed"
 managed.mkdir(parents=True, exist_ok=True)
 (managed / "nextlink.json").write_text(chrome_managed_policy())
+firefox = root / "etc/firefox/policies"
+firefox.mkdir(parents=True, exist_ok=True)
+(firefox / "policies.json").write_text(firefox_policy())
 skip_new_laptop_questions(root)
 
 codename = "resolute"

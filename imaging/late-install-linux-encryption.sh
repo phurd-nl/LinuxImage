@@ -1,22 +1,17 @@
 #!/bin/bash
 # late-install-linux-encryption.sh — run INSIDE the installed system (curtin in-target).
-# Extracts the bundled tarball and enables the first-boot LUKS wizard.
+# Fetches the image scripts from the imaging host and prepares the first boot.
 set -euo pipefail
 
 ARTIFACT=/opt/linux-encryption-setup.tar.gz
 INSTALL_ROOT=/opt/linux-encryption-setup
 URL="${LINUX_ENCRYPTION_ARTIFACT_URL:-}"
 
-if [ ! -f "$ARTIFACT" ] && [ -n "$URL" ]; then
-  echo "Downloading LinuxEncryption artifact from $URL"
-  curl -fsSL "$URL" -o "$ARTIFACT"
-fi
-
-if [ ! -f "$ARTIFACT" ]; then
-  echo "ABORT: $ARTIFACT missing. Copy imaging/extras/linux-encryption-setup.tar.gz to the USB."
-  exit 1
-fi
-
+# The setup bundle is not unpacked any more: it carried the old seed (with the NextAdmin
+# password), the home-encryption wizard and the web GUI (security review C1, M6). Every script
+# the image uses is fetched on its own below. The autoinstall still copies the bundle; drop it.
+rm -f "$ARTIFACT"
+install -d -m 755 -o root -g root "$INSTALL_ROOT" "$INSTALL_ROOT/scripts"
 mkdir -p /var/lib/linux-encryption-setup /tmp/kiosk-scripts
 fetch_extra() {
   name="$1"
@@ -39,44 +34,16 @@ if [ -f /tmp/kiosk-scripts/ubuntu_apps.py ]; then
 fi
 # Disk encryption is done by the installer (TPM-backed full disk). Nothing to fetch here.
 
-echo "== Extracting LinuxEncryption =="
-tar -xzf "$ARTIFACT" -C /opt
-mv /opt/staging "$INSTALL_ROOT"
-if curl -fsSL "http://192.168.26.106:8090/nocloud/extras/02-setup-encryption.sh" -o "$INSTALL_ROOT/scripts/02-setup-encryption.sh"; then
-  chmod 755 "$INSTALL_ROOT/scripts/02-setup-encryption.sh"
-else
-  echo "WARN: encryption setup script was not refreshed"
-fi
-if curl -fsSL "http://192.168.26.106:8090/nocloud/extras/setup_engine.py" -o "$INSTALL_ROOT/webgui/setup_engine.py"; then
-  chmod 644 "$INSTALL_ROOT/webgui/setup_engine.py"
-else
-  echo "WARN: encryption wizard was not refreshed"
+# One name per laptop, from its serial: every image was "ubuntu-laptop", which collides in
+# Wazuh, Atera, DHCP and logs (review H2). Set before the agents register.
+serial=$(tr -cd 'A-Za-z0-9-' < /sys/class/dmi/id/product_serial 2>/dev/null)
+if [ -n "$serial" ]; then
+  echo "NL-$serial" > /etc/hostname
+  if grep -q '^127.0.1.1' /etc/hosts; then sed -i "s/^127.0.1.1.*/127.0.1.1\tNL-$serial/" /etc/hosts
+  else printf '127.0.1.1\tNL-%s\n' "$serial" >> /etc/hosts; fi
+  hostname "NL-$serial" 2>/dev/null || true
 fi
 
-echo "== Installing wizard service + kiosk autostart =="
-# The published tarball still apt-installs chromium-browser. That package is
-# a snap shim and its postinst fails in this chroot. Drop only that apt
-# fallback. The launcher may still look for the browser by name.
-if [ -f "$INSTALL_ROOT/scripts/install-setup-wizard.sh" ]; then
-  python3 - << 'PY'
-from pathlib import Path
-path = Path("/opt/linux-encryption-setup/scripts/install-setup-wizard.sh")
-text = path.read_text()
-old = """DEBIAN_FRONTEND=noninteractive apt-get install -y \\
-  python3 curl gdisk cryptsetup clevis clevis-tpm2 tpm2-tools mokutil pamtester \\
-  chromium-browser 2>/dev/null \\
-  || DEBIAN_FRONTEND=noninteractive apt-get install -y \\
-  python3 curl gdisk cryptsetup clevis clevis-tpm2 tpm2-tools mokutil pamtester chromium"""
-new = """DEBIAN_FRONTEND=noninteractive apt-get install -y \\
-  python3 curl gdisk cryptsetup clevis clevis-tpm2 tpm2-tools mokutil pamtester"""
-if old in text:
-    path.write_text(text.replace(old, new, 1))
-    print("wizard apt no longer installs chromium")
-else:
-    print("wizard apt already avoids chromium")
-PY
-fi
-INSTALL_ROOT="$INSTALL_ROOT" bash "$INSTALL_ROOT/scripts/install-setup-wizard.sh" || echo "WARN: encryption wizard was not fully installed"
 # The employee signs in with Entra. Do not open the password kiosk.
 rm -f /etc/xdg/autostart/linux-encryption-wizard.desktop
 rm -f /etc/systemd/system/multi-user.target.wants/linux-encryption-wizard.service
@@ -100,6 +67,8 @@ if fetch_extra setup-wifi.sh "$INSTALL_ROOT/scripts/setup-wifi.sh"; then
   bash "$INSTALL_ROOT/scripts/setup-wifi.sh" || echo "WARN: Wi-Fi not configured"
 fi
 fetch_extra imaging-firstboot.sh "$INSTALL_ROOT/scripts/imaging-firstboot.sh" || true
+# IT accounts that may sign in to every Ubuntu laptop besides its owner (review H1). Optional.
+fetch_extra linux-admins.txt "$INSTALL_ROOT/linux-admins.txt" || true
 chmod 755 "$INSTALL_ROOT/scripts/imaging-firstboot.sh" 2>/dev/null || true
 cat > /etc/systemd/system/imaging-firstboot.service << 'UNIT'
 [Unit]
@@ -222,23 +191,23 @@ try:
 except Exception:
     raise SystemExit(0)
 saved = pathlib.Path("/var/lib/linux-encryption-setup/kiosk-selection.json")
-if not saved.is_file():
-    raise SystemExit(0)
 employee = ""
 try:
     employee = json.loads(saved.read_text()).get("employee") or ""
 except Exception:
-    raise SystemExit(0)
-text = login_banner(employee)
-if not text:
-    raise SystemExit(0)
+    pass
+issue = login_banner("").replace("\\n", "\n")
+pathlib.Path("/etc/issue").write_text(issue + "\n\n")
+pathlib.Path("/etc/issue.net").write_text(issue + "\n")
+legal = login_banner("")
+welcome = login_banner(employee)
 dconf = pathlib.Path("/etc/dconf/db/gdm.d/01-entra-login")
 lines = dconf.read_text().splitlines() if dconf.is_file() else ["[org/gnome/login-screen]", "disable-user-list=true"]
 lines = [line for line in lines if not line.startswith("banner-message-")]
 if not any(line.startswith("[org/gnome/login-screen]") for line in lines):
     lines.insert(0, "[org/gnome/login-screen]")
 lines.append("banner-message-enable=true")
-lines.append("banner-message-text='%s'" % text)
+lines.append("banner-message-text='%s'" % welcome)
 dconf.parent.mkdir(parents=True, exist_ok=True)
 dconf.write_text("\n".join(lines) + "\n")
 post = pathlib.Path("/etc/gdm3/PostLogin")
@@ -248,13 +217,14 @@ name="${1:-${USER:-}}"
 if [ -z "$name" ] || [ "$name" = "nextadmin" ]; then
   exit 0
 fi
+# The welcome line goes after the employee's first sign-in; the legal notice stays.
 file=/etc/dconf/db/gdm.d/01-entra-login
-if [ -f "$file" ]; then
-  sed -i '/^banner-message-/d' "$file"
+if [ -f "$file" ] && ! grep -q "^banner-message-text='%s'$" "$file"; then
+  sed -i "s/^banner-message-text=.*/banner-message-text='%s'/" "$file"
   dconf update || true
 fi
 exit 0
-""")
+""" % (legal, legal))
 (post / "Default").chmod(0o755)
 PY
 then
@@ -281,41 +251,18 @@ update-grub || echo "WARN: the installed boot line was not updated"
 # GNOME Shell 50 (Ubuntu 26.04) is Wayland-only. WaylandEnable=false leaves GDM
 # with no way to draw the sign-in screen, so the panel goes blank. Leave it on.
 
-# ponytail: temporary. Sends this boot's journal to the imaging host every
-# 2 minutes while the Dell blank sign-in screen is being diagnosed. Remove
-# this block and laptop-log-drop on the host once it is solved.
-cat > /usr/local/sbin/nextlink-boot-log << 'EOF'
-#!/bin/sh
-{
-  echo "== $(hostname) $(cat /proc/cmdline)"
-  echo "== systemctl --failed"; systemctl --failed --no-pager
-  echo "== loginctl"; loginctl list-sessions --no-pager
-  echo "== /etc/gdm3/custom.conf"; cat /etc/gdm3/custom.conf
-  echo "== drm"; ls -l /sys/class/drm/ /dev/dri/ 2>&1
-  echo "== journalctl -b"; journalctl -b --no-pager -o short-precise
-} 2>&1 | curl -fsS -m 60 --data-binary @- http://192.168.26.106:5514/
-EOF
-chmod 755 /usr/local/sbin/nextlink-boot-log
-cat > /etc/systemd/system/nextlink-boot-log.service << 'EOF'
-[Unit]
-Description=Send boot log to the imaging host
-[Service]
-Type=oneshot
-ExecStart=/usr/local/sbin/nextlink-boot-log
-EOF
-cat > /etc/systemd/system/nextlink-boot-log.timer << 'EOF'
-[Unit]
-Description=Send boot log to the imaging host
-[Timer]
-OnBootSec=90
-OnUnitActiveSec=120
-[Install]
-WantedBy=timers.target
-EOF
-mkdir -p /etc/systemd/system/timers.target.wants
-ln -sfn /etc/systemd/system/nextlink-boot-log.timer /etc/systemd/system/timers.target.wants/nextlink-boot-log.timer
+# The temporary journal uploader (nextlink-boot-log, every 2 minutes to :5514) is gone
+# (security review C2). Remove it if an older image left it behind.
+rm -f /etc/systemd/system/timers.target.wants/nextlink-boot-log.timer /etc/systemd/system/nextlink-boot-log.timer \
+  /etc/systemd/system/nextlink-boot-log.service /usr/local/sbin/nextlink-boot-log
 
+# Up to date before handoff (review H5). snapd is refreshed at first boot, when it runs.
+DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::=--force-confold upgrade || echo "WARN: apt upgrade did not finish"
+
+# Anything a root unit runs must be root-owned and not group-writable (review C1).
+chown -R root:root "$INSTALL_ROOT"
+chmod -R go-w "$INSTALL_ROOT"
 mkdir -p /var/lib/linux-encryption-setup
 echo "pending" > /var/lib/linux-encryption-setup/image-prepared
 
-echo "== LinuxEncryption wizard installed for first boot =="
+echo "== Laptop prepared for first boot =="

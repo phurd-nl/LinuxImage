@@ -8,9 +8,9 @@
 # available. This is not silent single sign-on, and it does not replace the
 # wizard password that opens the LUKS volume.
 #
-# allowed_users is ALL and owner is empty, so the first login does not
-# lock the laptop. Any account the UbuntuOauth app accepts can sign in.
-# Sudo is still the Entra group linux-sudo, not this setting. Offline
+# allowed_users is OWNER plus IT (linux-admins.txt); owner is the assigned person's work
+# account from the imaging ticket, or the first sign-in on a blank laptop (review H1).
+# Sudo is the Entra group linux-sudo (sudoers drop-in), not this setting. Offline
 # login uses the local password authd asks for when the person did not
 # type the Entra password.
 #
@@ -139,6 +139,16 @@ else
   printf '\n[msentraid]\nregister_device = true\n' >> "$conf"
 fi
 
+# Who may sign in (security review H1). Only this laptop's owner and IT:
+#  - owner: the assigned person's work account from the imaging ticket. A blank laptop has no
+#    owner yet, so authd makes the first account that signs in the owner.
+#  - IT admins: listed in linux-admins.txt from the imaging host (one email per line).
+sel=/var/lib/linux-encryption-setup/kiosk-selection.json
+owner_email=$(python3 -c 'import json,sys; print((json.load(open(sys.argv[1])).get("email") or "").strip().lower())' "$sel" 2>/dev/null || true)
+admins=$(grep -hoE '^[^#[:space:]]+@[^[:space:]]+' /opt/linux-encryption-setup/linux-admins.txt 2>/dev/null | tr 'A-Z' 'a-z' | paste -sd, -)
+NL_ALLOWED="OWNER${admins:+, $admins}"
+NL_OWNER="${owner_email:-\"\"}"
+export NL_ALLOWED NL_OWNER
 python3 - "$conf" <<'PY'
 import pathlib, sys
 path = pathlib.Path(sys.argv[1])
@@ -172,21 +182,28 @@ def set_key(lines, section, key, value):
         out.append(f"{key} = {value}")
     return out
 
-lines = set_key(lines, "users", "allowed_users", "ALL")
-lines = set_key(lines, "users", "owner", '""')
+import os
+lines = set_key(lines, "users", "allowed_users", os.environ["NL_ALLOWED"])
+lines = set_key(lines, "users", "owner", os.environ["NL_OWNER"])
 path.write_text("\n".join(lines) + "\n")
 PY
 
 dropin="$(dirname "$conf")/broker.conf.d"
 install -d "$dropin"
 rm -f "$dropin/20-owner-autoregistration.conf"
-cat > "$dropin/99-fleet-access.conf" <<'EOF'
+cat > "$dropin/99-fleet-access.conf" <<EOF
 [users]
-allowed_users = ALL
-owner = ""
+allowed_users = $NL_ALLOWED
+owner = $NL_OWNER
 EOF
 # The broker refuses to start if a drop-in is readable by anyone else.
 chmod 600 "$dropin/99-fleet-access.conf"
+
+# IT admin on any laptop: members of the Entra group linux-sudo (review C1). authd also maps
+# linux-* Entra groups onto local groups; this drop-in covers the group by its own name.
+printf '%%linux-sudo ALL=(ALL:ALL) ALL\n' > /etc/sudoers.d/linux-sudo
+chmod 440 /etc/sudoers.d/linux-sudo
+visudo -cf /etc/sudoers.d/linux-sudo >/dev/null || rm -f /etc/sudoers.d/linux-sudo
 
 install -d /etc/authd/brokers.d
 cp /snap/authd-msentraid/current/conf/authd/msentraid.conf /etc/authd/brokers.d/msentraid.conf
@@ -220,6 +237,6 @@ SystemAccount=true
 EOF
 
 echo "Entra login is configured. The login screen asks for user@domain."
-echo "Any account this app accepts can sign in. The first login is not the owner."
+echo "Sign-in: owner ${NL_OWNER} and IT (${NL_ALLOWED}). A blank laptop's first sign-in becomes the owner."
 echo "The device registers when the imaging login succeeds, not in this script."
 echo "The login screen is Entra. The first password sign-in replaces the install disk key."

@@ -3,7 +3,9 @@
 # NetworkManager connection. Runs in late-install while the imaging cable works.
 # The key is read once per Start from the imaging host; it is never in git or the seed.
 set -u
-HOST="${IMAGING_KIOSK:-http://192.168.26.106:8091}"
+# HTTPS with the imaging host's public key pinned: secrets never go in clear (security review C2).
+HOST="${IMAGING_KIOSK:-https://192.168.26.106:8092}"
+PIN="sha256//2jFl+1+PP0iTZrp+8/ltxQhVt2Ed+9m9cyuQUGhi5IM="
 SSID="${WIFI_SSID:-Nextlink_Corp}"
 DEST="/etc/NetworkManager/system-connections/${SSID}.nmconnection"
 tmp=$(mktemp)
@@ -15,7 +17,7 @@ serial=$(tr -d '\n ' < /sys/class/dmi/id/product_serial 2>/dev/null)
 for addr in /sys/class/net/*/address; do
   mac=$(tr 'A-F' 'a-f' < "$addr" | tr -d '\r\n')
   case "$mac" in ""|00:00:00:00:00:00) continue ;; esac
-  if curl -fsS --max-time 20 -o "$tmp" "${HOST}/api/imaging-file?mac=${mac}&serial=${serial}&name=wifi"; then got=1; break; fi
+  if curl -fsS --pinnedpubkey "$PIN" -k --max-time 20 -o "$tmp" "${HOST}/api/imaging-file?mac=${mac}&serial=${serial}&name=wifi"; then got=1; break; fi
 done
 if [ -z "$got" ]; then
   echo "[wifi] key not available for this laptop; Wi-Fi left for the employee"

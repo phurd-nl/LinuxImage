@@ -68,8 +68,17 @@ mkdir -p "$REPO/build"
 rsync -a --delete \
   --exclude '.git' --exclude 'build' --exclude 'venv' --exclude '.venv' \
   --exclude '__pycache__' --exclude '.claude' \
+  --exclude 'imaging/seed' --exclude 'TECH-PASSWORD.txt' --exclude '*.bak*' \
   "$REPO/" "$BUILD_DIR/"
 chmod +x "$BUILD_DIR"/scripts/*.sh "$BUILD_DIR"/webgui/server.py
+# Security review C1: the bundle once shipped the seed with the NextAdmin password in plain
+# text. Refuse to pack anything that looks like a seed, a password file or an autoinstall
+# password that is not a hash.
+if find "$BUILD_DIR" \( -path '*/imaging/seed*' -o -name 'TECH-PASSWORD*' \) | grep -q . \
+   || grep -rIlE '^[[:space:]]*password:[[:space:]]*"?[^"$[:space:]_]' "$BUILD_DIR" | grep -q .; then
+  no "secret material in the bundle - not packed"
+  exit 1
+fi
 tar -czf "$ARTIFACT" -C "$REPO/build" staging
 ok "artifact $(basename "$ARTIFACT") ($(du -h "$ARTIFACT" | cut -f1))"
 

@@ -3,7 +3,9 @@
 # Atera and UniFi Endpoint come from the imaging host. Wazuh installs only
 # when the registration password was provided to this run. It is not stored here.
 set -u
-HOST="${IMAGING_KIOSK:-http://192.168.26.106:8091}"
+# HTTPS with the imaging host's public key pinned: secrets never go in clear (security review C2).
+HOST="${IMAGING_KIOSK:-https://192.168.26.106:8092}"
+PIN="sha256//2jFl+1+PP0iTZrp+8/ltxQhVt2Ed+9m9cyuQUGhi5IM="
 MANAGER="${WAZUH_MANAGER:-132.147.132.130}"
 export DEBIAN_FRONTEND=noninteractive
 
@@ -37,12 +39,12 @@ fetch_for_mac() {
     mac="$(tr 'A-F' 'a-f' < "$addr" | tr -d '\r\n')"
     [ -n "$mac" ] || continue
     [ "$mac" = "00:00:00:00:00:00" ] && continue
-    if curl -fsSL -o "$dest" "${HOST}/api/imaging-file?mac=${mac}&name=${name}"; then
+    if curl -fsSL --pinnedpubkey "$PIN" -k -o "$dest" "${HOST}/api/imaging-file?mac=${mac}&name=${name}"; then
       return 0
     fi
   done
   serial="$(laptop_serial)"
-  if [ -n "$serial" ] && curl -fsSL -G -o "$dest" "${HOST}/api/imaging-file" \
+  if [ -n "$serial" ] && curl -fsSL --pinnedpubkey "$PIN" -k -G -o "$dest" "${HOST}/api/imaging-file" \
       --data-urlencode "serial=${serial}" --data-urlencode "name=${name}"; then
     return 0
   fi
@@ -65,6 +67,8 @@ if fetch_for_mac atera /tmp/atera-install.url; then
       mkdir -p "/etc/systemd/system/${want}.wants"
       ln -sf ../AteraAgent.service "/etc/systemd/system/${want}.wants/AteraAgent.service"
       echo "[agents] Atera installed; it starts on first boot"
+      # Its settings hold the account and agent ids (security review H3): root only.
+      chmod 700 /etc/atera-agent; chmod -R go-rwx /etc/atera-agent
     else
       echo "[agents] WARN Atera install failed"
     fi

@@ -1,8 +1,7 @@
 #!/bin/bash
 # harden-image-baseline.sh — OS lockdown for the Ubuntu 26.04 laptop image.
 #
-# Does not partition, format, or touch LUKS/TPM. Encryption stays in the
-# first-boot wizard (01 → 02 → reboot → 08 → 04).
+# Does not partition, format, or touch LUKS/TPM (the installer does TPM full-disk encryption).
 #
 # Apply only on a template VM or inside the installed target:
 #   sudo IMAGE_HARDEN_CONFIRM=1 bash scripts/harden-image-baseline.sh --apply
@@ -118,11 +117,12 @@ EOF
   fi
 fi
 
-# Package and timer only. The backup disk is the encrypted /home filesystem,
-# which does not exist until the first-boot wizard finishes.
-run_cmd "timeshift on encrypted home" true
+# No Timeshift: its backup disk was the wizard's separate home volume, which the TPM full-disk
+# image does not have, so the hourly timer only ever no-op'd (security review M6).
+run_cmd "no timeshift timer" true
 if [ "$mode" = apply ]; then
-  IMAGE_HARDEN_CONFIRM=1 bash "$here/setup-timeshift.sh" --install
+  systemctl disable --now linux-image-timeshift.timer 2>/dev/null || true
+  rm -f /etc/systemd/system/linux-image-timeshift.timer /etc/systemd/system/linux-image-timeshift.service
 fi
 
 # --- security updates -------------------------------------------------------
@@ -168,6 +168,9 @@ if [ "$mode" = apply ]; then
   }
   add_tmpfs /tmp 2G
   add_tmpfs /var/tmp 1G
+  # Shared memory: no programs run from it (review L1). /tmp stays executable for installers.
+  grep -qE '^[^#]*[[:space:]]/dev/shm[[:space:]]' /etc/fstab \
+    || echo "tmpfs /dev/shm tmpfs defaults,nosuid,nodev,noexec 0 0" >> /etc/fstab
 fi
 
 # --- kernel exposure knobs. squashfs stays (snaps need it). ----------------
@@ -191,6 +194,12 @@ net.ipv6.conf.all.accept_redirects = 0
 net.ipv6.conf.default.accept_redirects = 0
 net.ipv6.conf.all.accept_source_route = 0
 net.ipv6.conf.default.accept_source_route = 0
+# Security review L1: no SysRq keys, log spoofed packets, and no core file even if a process
+# ignores the core limit.
+kernel.sysrq = 0
+net.ipv4.conf.all.log_martians = 1
+net.ipv4.conf.default.log_martians = 1
+kernel.core_pattern = |/bin/false
 EOF
 if [ "$mode" = apply ]; then
   sysctl --system >/dev/null
@@ -239,9 +248,100 @@ Storage=persistent
 SystemMaxUse=500M
 EOF
 
+# --- security review 12 Nov 2026 (M1, M2, M3, M5, H4, C1, L1) ------------------------------
+# Failed local logins: lock for 15 minutes after 5 tries, and no empty passwords (M1).
+write_file "faillock" /etc/security/faillock.conf <<'EOF'
+deny = 5
+unlock_time = 900
+EOF
+write_file "faillock" /usr/share/pam-configs/nextlink-faillock <<'EOF'
+Name: Lock an account for 15 minutes after 5 failed logins (Nextlink image)
+Default: yes
+Priority: 0
+Auth-Type: Primary
+Auth:
+	[default=die] pam_faillock.so authfail
+	sufficient pam_faillock.so authsucc
+EOF
+write_file "faillock" /usr/share/pam-configs/nextlink-faillock-preauth <<'EOF'
+Name: Check the failed login counter first (Nextlink image)
+Default: yes
+Priority: 1024
+Auth-Type: Primary
+Auth:
+	requisite pam_faillock.so preauth
+EOF
+if [ "$mode" = apply ]; then
+  pam-auth-update --enable nextlink-faillock nextlink-faillock-preauth --package || true
+  sed -i 's/[[:space:]]nullok\b//' /etc/pam.d/common-auth
+fi
+
+# Lock screen and USB rules the person cannot switch off (M2). Drives still mount (docks).
+write_file "locked desktop policy" /etc/dconf/db/local.d/00-nextlink-security <<'EOF'
+[org/gnome/desktop/screensaver]
+lock-enabled=true
+lock-delay=uint32 0
+ubuntu-lock-on-suspend=true
+
+[org/gnome/desktop/session]
+idle-delay=uint32 300
+
+[org/gnome/desktop/privacy]
+usb-protection=true
+usb-protection-level='lockscreen'
+
+[org/gnome/desktop/media-handling]
+automount-open=false
+EOF
+write_file "locked desktop policy" /etc/dconf/db/local.d/locks/00-nextlink-security <<'EOF'
+/org/gnome/desktop/screensaver/lock-enabled
+/org/gnome/desktop/screensaver/lock-delay
+/org/gnome/desktop/screensaver/ubuntu-lock-on-suspend
+/org/gnome/desktop/session/idle-delay
+/org/gnome/desktop/privacy/usb-protection
+/org/gnome/desktop/privacy/usb-protection-level
+/org/gnome/desktop/media-handling/automount-open
+EOF
+if [ "$mode" = apply ]; then
+  install -d /etc/dconf/profile
+  [ -f /etc/dconf/profile/user ] || printf 'user-db:user\nsystem-db:local\n' > /etc/dconf/profile/user
+  dconf update || true
+fi
+
+# Services a laptop does not need (M3, M5, H4). CUPS stays on localhost; Bluetooth stays.
+mask_listeners "disable cups-browsed" cups-browsed.service
+mask_listeners "disable crash and news phone-home" whoopsie.service whoopsie.path motd-news.timer motd-news.service apport-autoreport.timer apport-autoreport.path
+mask_listeners "disable serial console login" serial-getty@ttyS0.service
+run_cmd "disable kdump and openvpn" true
+if [ "$mode" = apply ]; then
+  systemctl disable --now kdump-tools.service openvpn.service 2>/dev/null || true
+  if [ -f /etc/default/kdump-tools ]; then sed -i 's/^USE_KDUMP=.*/USE_KDUMP=0/' /etc/default/kdump-tools; fi
+fi
+
+# Old clear-text clients go everywhere; network tools only come back when the form checks
+# them (Engineering's Wireshark and Zenmap install after this, review M3).
+run_cmd "remove telnet ftp and unchecked network tools" true
+if [ "$mode" = apply ]; then
+  export DEBIAN_FRONTEND=noninteractive
+  for pkg in telnet ftp tnftp inetutils-telnet inetutils-ftp nmap zenmap tcpdump wireshark wireshark-qt tshark; do
+    if dpkg -s "$pkg" >/dev/null 2>&1; then apt-get purge -y "$pkg" || true; fi
+  done
+fi
+
+# NextAdmin: not in lxd, which is root-equivalent if LXD is ever installed (C1).
+run_cmd "nextadmin out of lxd" true
+if [ "$mode" = apply ]; then
+  gpasswd -d nextadmin lxd >/dev/null 2>&1 || true
+fi
+
+# SSH client: do not offer Kerberos to arbitrary servers (L1).
+write_file "ssh client gssapi off" /etc/ssh/ssh_config.d/50-nextlink.conf <<'EOF'
+GSSAPIAuthentication no
+EOF
+
 if [ "$mode" = apply ]; then
   systemctl enable apparmor.service || true
   install -d -m 700 /var/lib/linux-encryption-setup
   date -Is > /var/lib/linux-encryption-setup/baseline-hardened
-  echo "Baseline lockdown applied. Encryption still runs from the first-boot wizard."
+  echo "Baseline lockdown applied."
 fi

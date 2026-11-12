@@ -35,9 +35,11 @@ def main() -> None:
     assert queries == ["mac=4c:ea:41:69:4b:f4", "serial=J0DTRV3"], queries
     late = Path(__file__).resolve().parents[1] / "imaging" / "late-install-linux-encryption.sh"
     text = late.read_text()
-    assert "TimeoutStartSec=300" in text
+    # Entra setup and the report run in the background (Type=simple) and retry on failure;
+    # a oneshot in multi-user.target held the boot and starved AteraAgent (11 Nov).
     assert "TimeoutStartSec=0" not in text
-    assert "TimeoutStartSec=900" in text
+    assert text.count("Type=simple") >= 2
+    assert text.count("Restart=on-failure") >= 2
     assert "Before=display-manager" not in text
     assert "gdm.service.d/wait-for-entra.conf << " not in text
     assert "journal+console" in text
@@ -46,16 +48,11 @@ def main() -> None:
     assert "i915.enable_psr=0" in text
     assert "for flag in i915.enable_psr=0; do" in text
     assert "99-nextlink-panel.cfg" in text
-    # pam_nologin refuses the password check until user sessions are allowed.
-    assert "After=local-fs.target systemd-user-sessions.service" in text
     # snap install fails with "device not yet seeded" before snapd.seeded.
     assert "After=snapd.seeded.service" in text
-    enc = Path(__file__).with_name("unattended-encrypt.sh").read_text()
-    # A failed run must not log "ready" and look finished.
-    assert 'logger -t unattended-encrypt "orchestrator failed"; exit 1; }' in enc
-    setup = Path(__file__).with_name("02-setup-encryption.sh").read_text()
-    assert "secureboot-override" in enc
-    assert "secureboot-override" in setup
+    # The old home-encryption wizard is not installed on the TPM-FDE image (review M6).
+    assert "install-setup-wizard.sh" not in text
+    assert "webgui" not in text
     assert 'for extra in ubuntu_apps.py ubuntu-desktop.sh ubuntu_desktop.py install-windows-agents.sh' in text
     assert 'if [ ! -f "$INSTALL_ROOT/scripts/$extra" ]' not in text
     agents = Path(__file__).with_name("install-windows-agents.sh").read_text()

@@ -13,7 +13,9 @@ import subprocess
 import urllib.parse
 import urllib.request
 
-HOST = "http://192.168.26.106:8091"
+# HTTPS with the imaging host's public key pinned (security review C2). curl does the pinning.
+HOST = "https://192.168.26.106:8092"
+PIN = "sha256//2jFl+1+PP0iTZrp+8/ltxQhVt2Ed+9m9cyuQUGhi5IM="
 # Read by imaging-firstboot.sh for the NextDesk report.
 RESULT = pathlib.Path("/var/lib/linux-encryption-setup/apps-result.json")
 # Apt names in Ubuntu 26.04. Chrome is a deb because it is not in the archive.
@@ -157,8 +159,10 @@ def _decision_from_host() -> dict | None:
     for query in decision_queries(_macs(), _serials()):
         url = f"{HOST}/api/decision?{query}"
         try:
-            with urllib.request.urlopen(url, timeout=12) as response:
-                payload = json.load(response)
+            import subprocess
+            out = subprocess.run(["curl", "-sf", "--pinnedpubkey", PIN, "-k", "--max-time", "12", url],
+                                 capture_output=True, timeout=20, check=True).stdout
+            payload = json.loads(out)
         except Exception:
             continue
         if payload.get("ready") and isinstance(payload.get("apps"), list):
@@ -173,9 +177,12 @@ def save_selection(path: str) -> bool:
     if payload is None:
         return False
     employee = payload.get("employee") if isinstance(payload.get("employee"), str) else ""
+    email = payload.get("email") if isinstance(payload.get("email"), str) else ""
     pathlib.Path(path).write_text(json.dumps({
         "apps": [str(item) for item in payload["apps"]],
         "employee": employee.strip(),
+        # The assigned person's work account: the Entra owner of this laptop (review H1).
+        "email": email.strip(),
     }))
     return True
 

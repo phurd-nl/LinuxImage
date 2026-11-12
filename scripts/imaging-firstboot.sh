@@ -5,11 +5,39 @@
 # 2. Posts the imaging report; the host writes it on the laptop's NextDesk ticket.
 # Runs until both are sent, then never again.
 set -u
-HOST="${IMAGING_KIOSK:-http://192.168.26.106:8091}"
+umask 077
+# HTTPS with the imaging host's key pinned: the recovery key, report and logs never go in clear,
+# and nothing else can answer as the imaging host (security review C2, 12 Nov 2026).
+HOST="${IMAGING_KIOSK:-https://192.168.26.106:8092}"
+PIN="sha256//2jFl+1+PP0iTZrp+8/ltxQhVt2Ed+9m9cyuQUGhi5IM="
+hcurl() { curl -sf --pinnedpubkey "$PIN" -k "$@"; }
 STATE=/var/lib/linux-encryption-setup
 DONE="$STATE/report-sent"
 install -d -m 700 "$STATE"
-[ -f "$DONE" ] && exit 0
+
+# After the report: lock down what imaging needed and remove what it left behind
+# (security review C1, C2, H3, M4, M6, L1). Runs again on later boots until Entra is in,
+# because the setup folder holds the Entra installer until then.
+finish_imaging() {
+  rm -f /opt/linux-encryption-setup.tar.gz /tmp/nl-installer-logs.zip /var/log/imaging-firstboot-recovery.log
+  rm -rf /opt/linux-encryption-setup/imaging /opt/linux-encryption-setup/webgui
+  if [ -d /etc/atera-agent ]; then chmod 700 /etc/atera-agent; chmod -R go-rwx /etc/atera-agent; fi
+  # Installing authd re-runs pam-auth-update, which puts nullok back (review M1).
+  sed -i 's/[[:space:]]nullok\b//' /etc/pam.d/common-auth 2>/dev/null || true
+  snap disconnect firefox:camera >/dev/null 2>&1 || true
+  snap disconnect firefox:audio-record >/dev/null 2>&1 || true
+  systemctl mask cloud-init.target cloud-init.service cloud-init-local.service cloud-config.service cloud-final.service >/dev/null 2>&1 || true
+  systemctl disable --now nextlink-boot-log.timer >/dev/null 2>&1 || true
+  rm -f /etc/systemd/system/nextlink-boot-log.timer /etc/systemd/system/nextlink-boot-log.service /usr/local/sbin/nextlink-boot-log
+  rm -f /etc/systemd/system/timers.target.wants/nextlink-boot-log.timer
+  if snap list authd-msentraid >/dev/null 2>&1; then
+    systemctl disable nextlink-entra-authd.service imaging-firstboot.service >/dev/null 2>&1 || true
+    rm -f /etc/systemd/system/multi-user.target.wants/nextlink-entra-authd.service /etc/systemd/system/multi-user.target.wants/imaging-firstboot.service
+    rm -rf /opt/linux-encryption-setup
+  fi
+  systemctl daemon-reload >/dev/null 2>&1 || true
+}
+if [ -f "$DONE" ]; then finish_imaging; exit 0; fi
 
 macs=$(for a in /sys/class/net/*/address; do
   n=$(basename "$(dirname "$a")"); [ "$n" = lo ] && continue
@@ -25,7 +53,7 @@ checks=()
 # Each run makes a fresh key, so a failed filing is fixed by the next run.
 FILED="$STATE/recovery-key-filed"
 key=""
-[ -f "$FILED" ] || key=$(python3 - <<'PY' 2>>/var/log/imaging-firstboot-recovery.log
+[ -f "$FILED" ] || key=$(python3 - <<'PY' 2>>"$STATE/recovery-errors.log"
 import http.client, json, socket, sys, time
 
 class Snapd(http.client.HTTPConnection):
@@ -67,11 +95,12 @@ escrowed=no
 if [ "$escrowed" = yes ]; then
   :
 elif [ -z "$key" ]; then
-  problems+=("The disk recovery key could not be set (see /var/log/imaging-firstboot-recovery.log). Make one with snap-tpmctl or Security Center before handing the laptop out.")
+  problems+=("The disk recovery key could not be set (see /var/lib/linux-encryption-setup/recovery-errors.log). Make one with snap-tpmctl or Security Center before handing the laptop out.")
 else
   for mac in $macs; do
-    body=$(python3 -c 'import json,sys; print(json.dumps({"mac": sys.argv[1], "passphrase": sys.argv[2], "serial": sys.argv[3]}))' "$mac" "$key" "$(dmi product_serial)")
-    if curl -sf --max-time 20 -H 'Content-Type: application/json' -d "$body" "$HOST/api/recovery" | grep -q '"ok":true'; then
+    # The key goes to python and curl on stdin, never on a command line (ps shows those to every user).
+    if printf '%s' "$key" | python3 -c 'import json,sys; print(json.dumps({"mac": sys.argv[1], "passphrase": sys.stdin.read().strip(), "serial": sys.argv[2]}))' "$mac" "$(dmi product_serial)" \
+        | hcurl --max-time 20 -H 'Content-Type: application/json' --data-binary @- "$HOST/api/recovery" | grep -q '"ok":true'; then
       escrowed=yes; touch "$FILED"; break
     fi
   done
@@ -147,16 +176,17 @@ PY
 printf '%s\n' "$report" > "$STATE/imaging-report.json"
 # Installer logs next to the report on the imaging host (storage and encryption decisions live there).
 serial=$(tr -d '\n' < /sys/class/dmi/id/product_serial 2>/dev/null | sed 's/[^A-Za-z0-9_-]//g')
-python3 - "$HOST" "$serial" <<'PY' || logger -t imaging-firstboot "installer logs not sent"
-import shutil, sys, urllib.request as u
-host, serial = sys.argv[1], sys.argv[2] or "unknown"
-shutil.make_archive("/tmp/nl-installer-logs", "zip", "/var/log", "installer")
-data = open("/tmp/nl-installer-logs.zip", "rb").read()
-u.urlopen(u.Request(f"{host}/api/logs?serial={serial}", data=data, headers={"Content-Type": "application/zip"}), timeout=60).read()
-PY
-if curl -sf --max-time 30 -H 'Content-Type: application/json' -d "$report" "$HOST/api/report" >/dev/null; then
+logs=$(mktemp -d)
+if python3 -c 'import shutil,sys; shutil.make_archive(sys.argv[1] + "/installer-logs", "zip", "/var/log", "installer")' "$logs"; then
+  hcurl --max-time 60 -H 'Content-Type: application/zip' --data-binary @"$logs/installer-logs.zip" "$HOST/api/logs?serial=${serial:-unknown}" >/dev/null \
+    || logger -t imaging-firstboot "installer logs not sent"
+fi
+rm -rf "$logs"
+if printf '%s' "$report" | hcurl --max-time 30 -H 'Content-Type: application/json' --data-binary @- "$HOST/api/report" >/dev/null; then
   date -Is > "$DONE"
   logger -t imaging-firstboot "report sent; recovery key escrowed=$escrowed"
+  finish_imaging
+  snap refresh --no-wait >/dev/null 2>&1 || true
 else
   logger -t imaging-firstboot "report not sent; will retry next boot"
   exit 1

@@ -26,7 +26,16 @@ for line in \
   "disable avahi" \
   "disable rpcbind" \
   "disable wsdd" \
-  "timeshift on encrypted home" \
+  "no timeshift timer" \
+  "faillock" \
+  "locked desktop policy" \
+  "disable cups-browsed" \
+  "disable crash and news phone-home" \
+  "disable serial console login" \
+  "disable kdump and openvpn" \
+  "remove telnet ftp and unchecked network tools" \
+  "nextadmin out of lxd" \
+  "ssh client gssapi off" \
   "unattended-upgrades" \
   "gdm no autologin" \
   "tmpfs /tmp" \

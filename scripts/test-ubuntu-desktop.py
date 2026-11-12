@@ -11,6 +11,7 @@ from ubuntu_desktop import (
     chrome_initial_preferences,
     chrome_managed_policy,
     desktop_file,
+    firefox_policy,
     dock_defaults,
     login_banner,
     onedrive_config,
@@ -50,6 +51,9 @@ def main() -> None:
     assert "skip_first_run_ui" in prefs
     policy = chrome_managed_policy()
     assert "PromotionalTabsEnabled" in policy
+    assert '"SafeBrowsingProtectionLevel": 1' in policy and '"BrowserGuestModeEnabled": false' in policy
+    assert '"DisableTelemetry": true' in firefox_policy()
+    assert "etc/firefox/policies" in Path(__file__).with_name("ubuntu-desktop.sh").read_text()
     shell = Path(__file__).with_name("ubuntu-desktop.sh").read_text()
     assert "onedrive.service" in shell
     assert "symlink_to" not in shell
@@ -102,8 +106,11 @@ def main() -> None:
     assert 'azure_tenant_id = "143673a5-ff46-4d23-8255-b4ef07861814"' in config
     assert 'sync_dir = "~/OneDrive"' in config
     assert "secret" not in config.lower()
-    assert login_banner("  Zachariah   Miller ") == "Welcome Zachariah Miller"
-    assert login_banner("   ") == ""
+    # Legal notice always (review H2); the welcome line is added when the laptop has a person.
+    legal = login_banner("   ")
+    assert legal.startswith("Authorized use only.") and "Welcome" not in legal
+    assert login_banner("  Zachariah   Miller ") == legal + " Welcome Zachariah Miller."
+    assert "'" not in legal and "\n" not in legal
     policy = update_policy("resolute")
     assert "-security" in policy
     assert "-updates" in policy

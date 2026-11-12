@@ -108,7 +108,24 @@ def chrome_managed_policy() -> str:
         "PromotionalTabsEnabled": False,
         "MetricsReportingEnabled": False,
         "SuppressUnsupportedOSWarning": True,
+        # Security review M4: Safe Browsing on and fixed, dangerous downloads blocked, no guest
+        # profiles. Extensions stay allowed until there is a company allow list.
+        "SafeBrowsingProtectionLevel": 1,
+        "DownloadRestrictions": 1,
+        "BrowserGuestModeEnabled": False,
     }, indent=2) + "\n"
+
+
+def firefox_policy() -> str:
+    """Enterprise policy for the Firefox snap (/etc/firefox/policies/policies.json), review M4."""
+    import json
+    return json.dumps({"policies": {
+        "DisableTelemetry": True,
+        "DisableFirefoxStudies": True,
+        "DisablePocket": True,
+        "DontCheckDefaultBrowser": True,
+        "Permissions": {"Camera": {"BlockNewRequests": False}, "Microphone": {"BlockNewRequests": False}},
+    }}, indent=2) + "\n"
 
 
 def skip_new_laptop_questions(root) -> None:
@@ -184,11 +201,15 @@ def skip_new_laptop_questions(root) -> None:
             pass
 
 
+LEGAL_NOTICE = ("Authorized use only. This laptop and its data belong to Nextlink Internet. "
+                "Activity may be monitored and recorded.")
+
+
 def login_banner(employee: str) -> str:
+    """Sign-in screen text: the legal notice, plus a welcome line while the laptop is new.
+    One line, no quotes: it goes into a dconf string and a sed replacement."""
     name = " ".join((employee or "").replace("'", "").split())
-    if not name:
-        return ""
-    return f"Welcome {name}"
+    return f"{LEGAL_NOTICE} Welcome {name}." if name else LEGAL_NOTICE
 
 
 def onedrive_config() -> str:
