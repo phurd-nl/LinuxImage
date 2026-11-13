@@ -86,10 +86,10 @@ mask_listeners() {
   fi
   local unit
   for unit in "$@"; do
-    if systemctl list-unit-files "$unit" --no-legend 2>/dev/null | grep -q "^${unit}"; then
-      systemctl disable --now "$unit" || true
-      systemctl mask "$unit" || true
-    fi
+    # Mask unconditionally: template instances such as
+    # serial-getty@ttyS0 never show in the unit file list, and masking an absent unit is harmless.
+    systemctl disable --now "$unit" 2>/dev/null || true
+    systemctl mask "$unit" || true
   done
 }
 

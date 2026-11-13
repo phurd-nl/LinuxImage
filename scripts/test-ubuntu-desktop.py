@@ -106,6 +106,9 @@ def main() -> None:
     assert 'azure_tenant_id = "143673a5-ff46-4d23-8255-b4ef07861814"' in config
     assert 'sync_dir = "~/OneDrive"' in config
     assert "secret" not in config.lower()
+    # The onedrive client rejects unquoted values ("Malformed config line").
+    import re
+    assert all(re.fullmatch(r'[a-z_]+ = ".*"', line) for line in config.splitlines()), config
     # Legal notice always (review H2); the welcome line is added when the laptop has a person.
     legal = login_banner("   ")
     assert legal.startswith("Authorized use only.") and "Welcome" not in legal

@@ -14,7 +14,8 @@ check "no installer log zip"          "test ! -e /tmp/nl-installer-logs.zip"
 check "no setup bundle"               "test ! -e /opt/linux-encryption-setup.tar.gz"
 check "no web GUI or wizard"          "test ! -e /opt/linux-encryption-setup/webgui"
 check "atera folder is 700"           "[ \"\$(stat -c %a /etc/atera-agent)\" = 700 ]"
-check "nothing in atera readable by others" "[ -z \"\$(find /etc/atera-agent -perm -004 2>/dev/null)\" ]"
+# The agent writes new files 644 after imaging; the 700 folder above is what keeps others out.
+check "atera folder owned by root, others cannot enter" "[ \"\$(stat -c '%U %a' /etc/atera-agent)\" = 'root 700' ]"
 
 echo "== Imaging data no longer leaves in clear"
 check "boot-log timer gone"           "! systemctl is-enabled nextlink-boot-log.timer"

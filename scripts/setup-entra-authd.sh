@@ -232,6 +232,13 @@ cat > "/var/lib/AccountsService/users/${imaging_user}" <<EOF
 SystemAccount=true
 EOF
 
+# The login screen may have come up before Entra was installed (the store retry can take
+# minutes); it then offers only a local password and no welcome line. Restart it so it
+# shows the Entra choice, but never under a person who is already signed in.
+if [ -z "$(loginctl list-sessions --no-legend 2>/dev/null | awk '$3 !~ /^gdm/ {print}')" ]; then
+  systemctl restart gdm || true
+fi
+
 echo "Entra login is configured. The login screen asks for user@domain."
 echo "Any account the Entra app accepts can sign in (limit it with Assignment required in Entra)."
 echo "The device registers when the imaging login succeeds, not in this script."

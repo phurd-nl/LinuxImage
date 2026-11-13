@@ -58,4 +58,11 @@ else
   ok "--apply without confirm fails"
 fi
 
+# Template instances (serial-getty@ttyS0) are not in list-unit-files, so masking must not depend on it.
+if awk '/^mask_listeners\(\)/,/^}/' "$here/harden-image-baseline.sh" | grep -q 'list-unit-files'; then
+  no "mask_listeners skips template instances such as serial-getty@ttyS0"
+else
+  ok "mask_listeners masks template instances"
+fi
+
 exit "$fail"

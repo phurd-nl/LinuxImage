@@ -218,7 +218,7 @@ def onedrive_config() -> str:
         f'azure_tenant_id = "{ONEDRIVE_TENANT_ID}"\n'
         'sync_dir = "~/OneDrive"\n'
         'monitor_interval = "300"\n'
-        "disable_notifications = false\n"
+        'disable_notifications = "false"\n'
         # Sign-in shows a short code for microsoft.com/devicelogin (work accounts only).
         'use_device_auth = "true"\n'
     )

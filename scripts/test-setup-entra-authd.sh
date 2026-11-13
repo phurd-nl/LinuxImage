@@ -53,7 +53,7 @@ do
   fi
 done
 
-if grep -q 'allowed_users = ALL' "$script" && grep -q 'owner = ""' "$script"; then
+if grep -q 'NL_ALLOWED="ALL"' "$script" && grep -q "NL_OWNER='\"\"'" "$script"; then
   ok "fleet access is in the apply path"
 else
   no "apply path missing allowed_users or empty owner"
@@ -78,5 +78,11 @@ for f in 02-setup-encryption.sh 06-restore-tpm-autounlock.sh 08-harden-tpm-pcr7-
     ok "$f opens /home for any session"
   fi
 done
+
+if grep -q 'systemctl restart gdm' "$script" && grep -q 'loginctl list-sessions' "$script"; then
+  ok "login screen restarts after Entra installs when nobody is signed in"
+else
+  no "login screen keeps its old broker list after Entra installs"
+fi
 
 exit "$fail"

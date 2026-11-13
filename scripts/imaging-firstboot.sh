@@ -100,7 +100,7 @@ else
   for mac in $macs; do
     # The key goes to python and curl on stdin, never on a command line (ps shows those to every user).
     if printf '%s' "$key" | python3 -c 'import json,sys; print(json.dumps({"mac": sys.argv[1], "passphrase": sys.stdin.read().strip(), "serial": sys.argv[2]}))' "$mac" "$(dmi product_serial)" \
-        | hcurl --max-time 20 -H 'Content-Type: application/json' --data-binary @- "$HOST/api/recovery" | grep -q '"ok":true'; then
+        | hcurl --max-time 60 -H 'Content-Type: application/json' --data-binary @- "$HOST/api/recovery" | grep -q '"ok":true'; then
       escrowed=yes; touch "$FILED"; break
     fi
   done
