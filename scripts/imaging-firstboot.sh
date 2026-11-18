@@ -19,7 +19,7 @@ install -d -m 700 "$STATE"
 # (security review C1, C2, H3, M4, M6, L1). Runs again on later boots until Entra is in,
 # because the setup folder holds the Entra installer until then.
 finish_imaging() {
-  rm -f /opt/linux-encryption-setup.tar.gz /tmp/nl-installer-logs.zip /var/log/imaging-firstboot-recovery.log
+  rm -f /opt/linux-encryption-setup.tar.gz /opt/late-install-linux-encryption.sh /tmp/nl-installer-logs.zip /var/log/imaging-firstboot-recovery.log
   rm -rf /opt/linux-encryption-setup/imaging /opt/linux-encryption-setup/webgui
   if [ -d /etc/atera-agent ]; then chmod 700 /etc/atera-agent; chmod -R go-rwx /etc/atera-agent; fi
   # Installing authd re-runs pam-auth-update, which puts nullok back (review M1).

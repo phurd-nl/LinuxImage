@@ -263,4 +263,7 @@ chmod -R go-w "$INSTALL_ROOT"
 mkdir -p /var/lib/linux-encryption-setup
 echo "pending" > /var/lib/linux-encryption-setup/image-prepared
 
+# This script holds the imaging-host URL. It has already run. Do not ship it.
+rm -f /opt/late-install-linux-encryption.sh
+
 echo "== Laptop prepared for first boot =="

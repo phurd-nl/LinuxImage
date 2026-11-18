@@ -108,11 +108,21 @@ def chrome_managed_policy() -> str:
         "PromotionalTabsEnabled": False,
         "MetricsReportingEnabled": False,
         "SuppressUnsupportedOSWarning": True,
-        # Security review M4: Safe Browsing on and fixed, dangerous downloads blocked, no guest
-        # profiles. Extensions stay allowed until there is a company allow list.
-        "SafeBrowsingProtectionLevel": 1,
+        # Enhanced Safe Browsing, dangerous downloads blocked, no guest profiles.
+        # Extensions stay allowed until there is a company allow list.
+        # DNS-over-HTTPS stays off so lookups stay on the corporate resolver.
+        "SafeBrowsingProtectionLevel": 2,
         "DownloadRestrictions": 1,
         "BrowserGuestModeEnabled": False,
+        "PasswordLeakDetectionEnabled": True,
+        "HttpsOnlyMode": "force_enabled",
+        "DnsOverHttpsMode": "off",
+        "BlockThirdPartyCookies": True,
+        "AutofillCreditCardEnabled": False,
+        "PaymentMethodQueryEnabled": False,
+        "DefaultPopupsSetting": 2,
+        "EnableOnlineRevocationChecks": True,
+        "SafeBrowsingExtendedReportingEnabled": False,
     }, indent=2) + "\n"
 
 
@@ -125,6 +135,19 @@ def firefox_policy() -> str:
         "DisablePocket": True,
         "DontCheckDefaultBrowser": True,
         "Permissions": {"Camera": {"BlockNewRequests": False}, "Microphone": {"BlockNewRequests": False}},
+        # HTTPS-only is on, with per-site exceptions. Camera and mic stay allowed here;
+        # the snap plugs stay disconnected, which is the stronger control.
+        "HTTPSOnlyMode": "enabled",
+        "SSLVersionMin": "tls1.2",
+        "DNSOverHTTPS": {"Enabled": False, "Locked": True},
+        "EnableTrackingProtection": {
+            "Value": True,
+            "Locked": True,
+            "Cryptomining": True,
+            "Fingerprinting": True,
+            "EmailTracking": True,
+        },
+        "PopupBlocking": {"Default": True, "Locked": True},
     }}, indent=2) + "\n"
 
 

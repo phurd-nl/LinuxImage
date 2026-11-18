@@ -51,8 +51,16 @@ def main() -> None:
     assert "skip_first_run_ui" in prefs
     policy = chrome_managed_policy()
     assert "PromotionalTabsEnabled" in policy
-    assert '"SafeBrowsingProtectionLevel": 1' in policy and '"BrowserGuestModeEnabled": false' in policy
-    assert '"DisableTelemetry": true' in firefox_policy()
+    assert '"SafeBrowsingProtectionLevel": 2' in policy and '"BrowserGuestModeEnabled": false' in policy
+    assert '"HttpsOnlyMode": "force_enabled"' in policy
+    assert '"DnsOverHttpsMode": "off"' in policy
+    assert '"DefaultPopupsSetting": 2' in policy
+    firefox = firefox_policy()
+    assert '"DisableTelemetry": true' in firefox
+    assert '"HTTPSOnlyMode": "enabled"' in firefox
+    assert '"SSLVersionMin": "tls1.2"' in firefox
+    assert '"DNSOverHTTPS"' in firefox and '"Locked": true' in firefox
+    assert '"PopupBlocking"' in firefox
     assert "etc/firefox/policies" in Path(__file__).with_name("ubuntu-desktop.sh").read_text()
     shell = Path(__file__).with_name("ubuntu-desktop.sh").read_text()
     assert "onedrive.service" in shell

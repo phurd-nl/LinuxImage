@@ -41,7 +41,22 @@ base_size=$(stat -c %s "$casper/initrd.auto.base")
 pad=$(( (4 - base_size % 4) % 4 ))
 { cat "$casper/initrd.auto.base"; head -c "$pad" /dev/zero; cat "$nc/seed.cpio"; } > "$casper/initrd.auto.new"
 mv "$casper/initrd.auto.new" "$casper/initrd.auto"
-for f in imaging/late-install-linux-encryption.sh imaging/check-tpm-encryption.py scripts/imaging-firstboot.sh scripts/ubuntu_apps.py scripts/setup-wifi.sh; do
+# late-install fetches these by name from the imaging host. A name missing here
+# stays at whatever was last copied by hand, so a git edit never reaches the laptop.
+for f in \
+  imaging/late-install-linux-encryption.sh \
+  imaging/check-tpm-encryption.py \
+  scripts/imaging-firstboot.sh \
+  scripts/ubuntu_apps.py \
+  scripts/ubuntu_desktop.py \
+  scripts/ubuntu-desktop.sh \
+  scripts/setup-wifi.sh \
+  scripts/setup-entra-authd.sh \
+  scripts/install-windows-agents.sh \
+  scripts/harden-image-baseline.sh \
+  scripts/setup-timeshift.sh \
+  scripts/verify-security.sh
+do
     install -m 755 "$repo/$f" "$nc/extras/$(basename "$f")"
 done
 rm -rf "$work"

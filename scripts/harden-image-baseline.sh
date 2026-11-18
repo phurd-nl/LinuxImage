@@ -146,13 +146,19 @@ if [ "$mode" = apply ]; then
   if ! grep -q '^\[daemon\]' /etc/gdm3/custom.conf; then
     printf '\n[daemon]\n' >> /etc/gdm3/custom.conf
   fi
-  for key in AutomaticLoginEnable TimedLoginEnable WaylandEnable; do
+  for key in AutomaticLoginEnable TimedLoginEnable; do
     if grep -q "^${key}=" /etc/gdm3/custom.conf; then
       sed -i "s/^${key}=.*/${key}=false/" /etc/gdm3/custom.conf
     else
       sed -i "/^\[daemon\]/a ${key}=false" /etc/gdm3/custom.conf
     fi
   done
+  # GNOME Shell 50 has no X11 session. WaylandEnable=false leaves the sign-in screen blank.
+  if grep -q '^WaylandEnable=' /etc/gdm3/custom.conf; then
+    sed -i 's/^WaylandEnable=.*/WaylandEnable=true/' /etc/gdm3/custom.conf
+  else
+    sed -i '/^\[daemon\]/a WaylandEnable=true' /etc/gdm3/custom.conf
+  fi
 fi
 
 # --- scratch dirs are not persistent disks ----------------------------------
@@ -200,9 +206,27 @@ kernel.sysrq = 0
 net.ipv4.conf.all.log_martians = 1
 net.ipv4.conf.default.log_martians = 1
 kernel.core_pattern = |/bin/false
+# ICMP redirects are not a routing protocol this laptop should trust.
+# UFW does not override these. Leave rp_filter at 1 (loose): strict mode breaks ui-vpn.
+net.ipv4.conf.all.secure_redirects = 0
+net.ipv4.conf.default.secure_redirects = 0
 EOF
 if [ "$mode" = apply ]; then
   sysctl --system >/dev/null
+fi
+
+# UFW starts after systemd-sysctl and applies /etc/ufw/sysctl.conf, which ships
+# log_martians=0 and would undo the lines above.
+run_cmd "ufw keep martian logging" true
+if [ "$mode" = apply ] && [ -f /etc/ufw/sysctl.conf ]; then
+  ufw_sysctl=/etc/ufw/sysctl.conf
+  for key in net/ipv4/conf/all/log_martians net/ipv4/conf/default/log_martians; do
+    if grep -qE "^#?${key}=" "$ufw_sysctl"; then
+      sed -i -E "s|^#?${key}=.*|${key}=1|" "$ufw_sysctl"
+    else
+      printf '%s=1\n' "$key" >> "$ufw_sysctl"
+    fi
+  done
 fi
 
 write_file "sysctl lockdown" /etc/modprobe.d/linux-image-fs.conf <<'EOF'
@@ -213,6 +237,11 @@ install jffs2 /bin/true
 install hfs /bin/true
 install hfsplus /bin/true
 install udf /bin/true
+# Unused network protocols. USB storage and Bluetooth stay available for the dock.
+install dccp /bin/true
+install sctp /bin/true
+install rds /bin/true
+install tipc /bin/true
 EOF
 
 # --- crash reports stay on the machine --------------------------------------
@@ -334,10 +363,46 @@ if [ "$mode" = apply ]; then
   gpasswd -d nextadmin lxd >/dev/null 2>&1 || true
 fi
 
-# SSH client: do not offer Kerberos to arbitrary servers (L1).
+# SSH client only. Do not install openssh-server. A user ~/.ssh/config still wins.
 write_file "ssh client gssapi off" /etc/ssh/ssh_config.d/50-nextlink.conf <<'EOF'
-GSSAPIAuthentication no
+Host *
+  GSSAPIAuthentication no
+  ForwardAgent no
+  ForwardX11 no
+  HashKnownHosts yes
+  UpdateHostKeys yes
 EOF
+
+# This detachable has no modem. A machine with a WWAN device keeps ModemManager.
+run_cmd "mask ModemManager when this laptop has no WWAN modem" true
+if [ "$mode" = apply ]; then
+  wwan=0
+  if [ -n "$(ls -A /sys/class/wwan 2>/dev/null || true)" ]; then
+    wwan=1
+  fi
+  if compgen -G '/sys/class/net/wwan*' >/dev/null 2>&1; then
+    wwan=1
+  fi
+  if [ "$wwan" = 0 ]; then
+    systemctl disable --now ModemManager.service 2>/dev/null || true
+    systemctl mask ModemManager.service || true
+  else
+    echo "apply: WWAN present, leaving ModemManager"
+  fi
+fi
+
+# Printing stays on localhost. The web UI does not.
+run_cmd "cups web interface off" true
+if [ "$mode" = apply ] && [ -f /etc/cups/cupsd.conf ]; then
+  if grep -qE '^#?WebInterface' /etc/cups/cupsd.conf; then
+    sed -i -E 's|^#?WebInterface.*|WebInterface No|' /etc/cups/cupsd.conf
+  else
+    printf '\nWebInterface No\n' >> /etc/cups/cupsd.conf
+  fi
+  if systemctl is-active --quiet cups.service 2>/dev/null; then
+    cupsctl WebInterface=No || true
+  fi
+fi
 
 if [ "$mode" = apply ]; then
   systemctl enable apparmor.service || true

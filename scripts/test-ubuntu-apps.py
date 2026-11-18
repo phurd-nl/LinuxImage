@@ -55,6 +55,19 @@ def main() -> None:
     assert "webgui" not in text
     assert 'for extra in ubuntu_apps.py ubuntu-desktop.sh ubuntu_desktop.py install-windows-agents.sh' in text
     assert 'if [ ! -f "$INSTALL_ROOT/scripts/$extra" ]' not in text
+    # The installer script contains the imaging-host URL. It must not stay on the laptop.
+    assert "rm -f /opt/late-install-linux-encryption.sh" in text
+    publisher = late.parents[1] / "imaging" / "build-seed-cpio.sh"
+    published = publisher.read_text()
+    for name in (
+        "harden-image-baseline.sh",
+        "ubuntu_desktop.py",
+        "ubuntu-desktop.sh",
+        "setup-entra-authd.sh",
+        "install-windows-agents.sh",
+        "verify-security.sh",
+    ):
+        assert name in published, name
     agents = Path(__file__).with_name("install-windows-agents.sh").read_text()
     assert "kiosk.serial=" in agents
     assert "--data-urlencode" in agents
