@@ -20,6 +20,9 @@ def main() -> None:
     assert always["debs"][0]["id"] == "chrome"
     earth = plan(["earth-pro"])
     assert earth["debs"][0]["id"] == "earth-pro"
+    noc = plan(["tabby", "vantage-alpha"])
+    assert {row["id"] for row in noc["debs"]} == {"tabby", "vantage-alpha"}
+    assert all(row["url"].startswith("http://192.168.26.106:8090/apps/") for row in noc["debs"])
     tools = plan(["angry-ip", "winbox", "dude"])
     assert {row["id"] for row in tools["debs"]} == {"angry-ip", "winbox"}
     assert "zenmap" in tools["apt"]

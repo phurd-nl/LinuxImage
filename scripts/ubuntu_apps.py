@@ -30,6 +30,9 @@ DEB = {
     "chrome": "https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb",
     "earth-pro": "https://dl.google.com/dl/earth/client/current/google-earth-pro-stable_current_amd64.deb",
     "angry-ip": "https://github.com/angryip/ipscan/releases/download/3.12.1/ipscan_3.12.1_amd64.deb",
+    # Kept on the imaging host. NOC laptops install these while the cable is connected.
+    "tabby": "http://192.168.26.106:8090/apps/tabby/tabby-1.0.238-linux-x64.deb",
+    "vantage-alpha": "http://192.168.26.106:8090/apps/vantage-alpha/vantage-alpha_0.1.46_amd64.deb",
 }
 ZIP = {
     "winbox": "https://download.mikrotik.com/routeros/winbox/4.5/WinBox_Linux.zip",
