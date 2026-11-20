@@ -102,10 +102,14 @@ def main() -> None:
     assert "Exec=/usr/local/bin/nextlink-onedrive" in launcher and "Name=OneDrive" in launcher
     script = onedrive_connect_script()
     assert script.startswith("#!/bin/bash")
-    assert "refresh_token" in script                          # already connected: just open the folder
+    assert "refresh_token" in script
     assert "Enter the following code when prompted" in script  # the client's own device-code line
     assert "microsoft.com/devicelogin" in script
     assert "systemctl --user enable --now onedrive.service" in script
+    # 2.5.10 exits after a bare `onedrive` without copying files. --sync is what downloads.
+    assert "onedrive --sync" in script
+    assert "\nonedrive >" not in script
+    assert "is-active" in script
     assert "zenity" in script
     shell = Path(__file__).with_name("ubuntu-desktop.sh").read_text()
     assert "nextlink-onedrive" in shell and "zenity" in shell

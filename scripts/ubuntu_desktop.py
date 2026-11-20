@@ -261,28 +261,46 @@ def onedrive_desktop_file() -> str:
 
 
 def onedrive_connect_script() -> str:
-    """The OneDrive icon. First time: sign in with a code, then sync at every login.
+    """The OneDrive icon. First time: sign in with a code, then download ~/OneDrive.
 
-    The abraunegg client, with use_device_auth, prints "Enter the following code when
-    prompted: XXXX", waits for the approval, saves refresh_token and exits. Its packaged
-    user service (onedrive.service, --monitor) then keeps ~/OneDrive in sync.
+    Ubuntu 26.04 ships onedrive 2.5.10. A bare `onedrive` prints the device code, saves
+    refresh_token, and exits without copying files. `--sync` and `--monitor` are the
+    only modes that download. The packaged user service runs `--monitor` afterwards.
     """
     return r'''#!/bin/bash
-# OneDrive for this user. Sign in once with the work account; it syncs at every login after.
+# OneDrive for this user. Sign in once; --sync downloads ~/OneDrive. Later logins use onedrive.service.
 set -u
 cfg="$HOME/.config/onedrive"
 url="https://microsoft.com/devicelogin"
 title="OneDrive"
-if [ -s "$cfg/refresh_token" ]; then
-    systemctl --user enable --now onedrive.service >/dev/null 2>&1
+
+# Start a download. The user service (--monitor) keeps it current. If that unit does not
+# stay up, run --sync directly. Never start a second client while one is already running.
+ensure_downloading() {
     mkdir -p "$HOME/OneDrive"
+    if pgrep -u "$(id -u)" -x onedrive >/dev/null 2>&1; then
+        return 0
+    fi
+    systemctl --user enable --now onedrive.service >/dev/null 2>&1 || true
+    state=$(systemctl --user is-active onedrive.service 2>/dev/null || true)
+    case "$state" in
+        active|activating) return 0 ;;
+    esac
+    mkdir -p "$cfg"
+    nohup onedrive --sync >>"$cfg/sync.log" 2>&1 &
+    disown || true
+}
+
+if [ -s "$cfg/refresh_token" ]; then
+    ensure_downloading
     exec xdg-open "$HOME/OneDrive"
 fi
-mkdir -p "$cfg"
+mkdir -p "$cfg" "$HOME/OneDrive"
 [ -f "$cfg/config" ] || cp /etc/skel/.config/onedrive/config "$cfg/config"
 grep -q '^use_device_auth' "$cfg/config" || echo 'use_device_auth = "true"' >> "$cfg/config"
 log=$(mktemp)
-onedrive > "$log" 2>&1 &
+# --sync is required. Without it, 2.5.10 authorises and exits with an empty ~/OneDrive.
+onedrive --sync > "$log" 2>&1 &
 pid=$!
 code=""
 for _ in $(seq 1 45); do
@@ -297,15 +315,27 @@ if [ -z "$code" ]; then
 fi
 printf '%s' "$code" | wl-copy 2>/dev/null
 xdg-open "$url" >/dev/null 2>&1 &
-zenity --info --title="$title" --width=440 --text="Connect OneDrive to your work account.\n\nA browser window opened at $url\nEnter this code (it is already copied):\n\n<span size='xx-large'><b>$code</b></span>\n\nSign in with your work email and approve it on your phone.\nThis window can be closed." &
+zenity --info --title="$title" --width=440 --text="Connect OneDrive to your work account.\n\nA browser window opened at $url\nEnter this code (it is already copied):\n\n<span size='xx-large'><b>$code</b></span>\n\nSign in with your work email and approve it on your phone.\nThis window can be closed. Files download to the OneDrive folder in Home." &
 note=$!
-wait "$pid"
-kill "$note" 2>/dev/null
+opened=0
+while kill -0 "$pid" 2>/dev/null; do
+    if [ "$opened" = 0 ] && [ -s "$cfg/refresh_token" ]; then
+        opened=1
+        kill "$note" 2>/dev/null || true
+        notify-send -i folder-remote "OneDrive is downloading" "Your files are copying to the OneDrive folder in Home." 2>/dev/null || true
+        xdg-open "$HOME/OneDrive" >/dev/null 2>&1 || true
+    fi
+    sleep 2
+done
+wait "$pid" || true
+kill "$note" 2>/dev/null || true
 if [ -s "$cfg/refresh_token" ]; then
-    systemctl --user enable --now onedrive.service >/dev/null 2>&1
-    mkdir -p "$HOME/OneDrive"
-    notify-send -i folder-remote "OneDrive is connected" "Your files sync to the OneDrive folder in Home." 2>/dev/null
-    xdg-open "$HOME/OneDrive"
+    # --sync has released the database, so the login monitor can take over.
+    systemctl --user enable --now onedrive.service >/dev/null 2>&1 || true
+    if [ "$opened" = 0 ]; then
+        notify-send -i folder-remote "OneDrive is connected" "Your files sync to the OneDrive folder in Home." 2>/dev/null || true
+        xdg-open "$HOME/OneDrive" >/dev/null 2>&1 || true
+    fi
 else
     zenity --error --title="$title" --width=420 --text="OneDrive was not connected. Click the OneDrive icon to try again.\n\n$(tail -n 4 "$log")"
 fi

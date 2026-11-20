@@ -40,7 +40,8 @@ apps = root / "usr/share/applications"
 apps.mkdir(parents=True, exist_ok=True)
 (apps / "teams-pwa.desktop").write_text(desktop_file("Microsoft Teams", TEAMS_URL, "teams-pwa", TEAMS_ICON))
 (apps / "outlook-pwa.desktop").write_text(desktop_file("Outlook", OUTLOOK_URL, "outlook-pwa", OUTLOOK_ICON))
-# OneDrive icon: first click signs in with a code, then OneDrive syncs at every login.
+# OneDrive icon: first click signs in with a code and runs `onedrive --sync` (a bare
+# `onedrive` on 2.5.10 saves the token and does not download). Later logins use the service.
 connect = root / "usr/local/bin/nextlink-onedrive"
 connect.parent.mkdir(parents=True, exist_ok=True)
 connect.write_text(onedrive_connect_script())
@@ -55,7 +56,7 @@ profile.mkdir(parents=True, exist_ok=True)
 (profile / "user").write_text("user-db:user\nsystem-db:local\n")
 
 # OneDrive is configured for ~/OneDrive but not started until the person clicks the OneDrive
-# icon (nextlink-onedrive) and signs in; that enables onedrive.service for later logins.
+# icon (nextlink-onedrive) and signs in. That runs --sync, then enables onedrive.service.
 skel = root / "etc/skel/.config/onedrive"
 skel.mkdir(parents=True, exist_ok=True)
 (skel / "config").write_text(onedrive_config())
