@@ -236,6 +236,10 @@ def login_banner(employee: str) -> str:
 
 
 def onedrive_config() -> str:
+    # ip_protocol_version and force_http_11: a parallel A and AAAA lookup, plus
+    # HTTP/2, makes --monitor retry one Graph call forever
+    # ("Could not resolve hostname on handle"). IPv4 and HTTP/1.1 is the
+    # client's documented workaround. These laptops reach Microsoft on IPv4.
     return (
         f'application_id = "{ONEDRIVE_CLIENT_ID}"\n'
         f'azure_tenant_id = "{ONEDRIVE_TENANT_ID}"\n'
@@ -244,7 +248,31 @@ def onedrive_config() -> str:
         'disable_notifications = "false"\n'
         # Sign-in shows a short code for microsoft.com/devicelogin (work accounts only).
         'use_device_auth = "true"\n'
+        'ip_protocol_version = "1"\n'
+        'force_http_11 = "true"\n'
     )
+
+
+def onedrive_ensure_config_snippet() -> str:
+    """Shell function. Writes the network workaround into an existing user config.
+
+    New images get the keys from onedrive_config(). A laptop imaged earlier keeps
+    the old file, and the client only reads it at startup.
+    """
+    return r'''onedrive_ensure_config() {
+  local file="$1"
+  [ -f "$file" ] || return 0
+  _onedrive_set() {
+    if grep -q "^$1 " "$file"; then
+      sed -i "s|^$1 = .*|$1 = $2|" "$file"
+    else
+      printf '%s = %s\n' "$1" "$2" >> "$file"
+    fi
+  }
+  _onedrive_set ip_protocol_version '"1"'
+  _onedrive_set force_http_11 '"true"'
+}
+'''
 
 
 def onedrive_desktop_file() -> str:
@@ -267,18 +295,24 @@ def onedrive_connect_script() -> str:
     refresh_token, and exits without copying files. `--sync` and `--monitor` are the
     only modes that download. The packaged user service runs `--monitor` afterwards.
     """
-    return r'''#!/bin/bash
-# OneDrive for this user. Sign in once; --sync downloads ~/OneDrive. Later logins use onedrive.service.
-set -u
-cfg="$HOME/.config/onedrive"
+    return (
+        "#!/bin/bash\n"
+        "# OneDrive for this user. Sign in once; --sync downloads ~/OneDrive. Later logins use onedrive.service.\n"
+        "set -u\n"
+        + onedrive_ensure_config_snippet()
+        + r'''cfg="$HOME/.config/onedrive"
 url="https://microsoft.com/devicelogin"
 title="OneDrive"
 
 # Start a download. The user service (--monitor) keeps it current. If that unit does not
 # stay up, run --sync directly. Never start a second client while one is already running.
+# A monitor that is already up but stuck on a dead DNS handle is restarted in place.
 ensure_downloading() {
-    mkdir -p "$HOME/OneDrive"
+    mkdir -p "$HOME/OneDrive" "$cfg"
+    [ -f "$cfg/config" ] || cp /etc/skel/.config/onedrive/config "$cfg/config"
+    onedrive_ensure_config "$cfg/config"
     if pgrep -u "$(id -u)" -x onedrive >/dev/null 2>&1; then
+        [ -x /usr/local/bin/nextlink-onedrive-unstick ] && /usr/local/bin/nextlink-onedrive-unstick || true
         return 0
     fi
     systemctl --user enable --now onedrive.service >/dev/null 2>&1 || true
@@ -286,7 +320,6 @@ ensure_downloading() {
     case "$state" in
         active|activating) return 0 ;;
     esac
-    mkdir -p "$cfg"
     nohup onedrive --sync >>"$cfg/sync.log" 2>&1 &
     disown || true
 }
@@ -298,6 +331,7 @@ fi
 mkdir -p "$cfg" "$HOME/OneDrive"
 [ -f "$cfg/config" ] || cp /etc/skel/.config/onedrive/config "$cfg/config"
 grep -q '^use_device_auth' "$cfg/config" || echo 'use_device_auth = "true"' >> "$cfg/config"
+onedrive_ensure_config "$cfg/config"
 log=$(mktemp)
 # --sync is required. Without it, 2.5.10 authorises and exits with an empty ~/OneDrive.
 onedrive --sync > "$log" 2>&1 &
@@ -341,6 +375,76 @@ else
 fi
 rm -f "$log"
 '''
+    )
+
+
+def onedrive_monitor_script() -> str:
+    """ExecStart for the user service. The packaged unit runs `onedrive --monitor` with the old config."""
+    return (
+        "#!/bin/bash\n"
+        "# Apply the IPv4 and HTTP/1.1 workaround, then run the monitor.\n"
+        "set -u\n"
+        + onedrive_ensure_config_snippet()
+        + 'onedrive_ensure_config "${HOME}/.config/onedrive/config"\n'
+        "exec /usr/bin/onedrive --monitor\n"
+    )
+
+
+def onedrive_unstick_script() -> str:
+    """Restart a monitor that is retrying a dead curl DNS handle.
+
+    The process stays active, so Restart=on-failure never runs. A fetch that is
+    still progressing does not print this error. Do not --resync: the local
+    database keeps items already saved.
+    """
+    return r'''#!/bin/bash
+# Restart OneDrive when this start is stuck on "Could not resolve hostname on handle".
+set -u
+systemctl --user is-active --quiet onedrive.service || exit 0
+started=$(systemctl --user show -p ActiveEnterTimestamp --value onedrive.service 2>/dev/null || true)
+[ -n "$started" ] || exit 0
+start_epoch=$(date -d "$started" +%s 2>/dev/null || echo 0)
+now=$(date +%s)
+# Give a fresh start time to reach Microsoft before treating a lookup as stuck.
+[ $((now - start_epoch)) -ge 180 ] || exit 0
+log=$(journalctl --user -u onedrive.service --since "$started" --no-pager -o cat 2>/dev/null || true)
+printf '%s\n' "$log" | grep -q 'Could not resolve hostname' || exit 0
+exec systemctl --user restart onedrive.service
+'''
+
+
+def onedrive_unstick_service() -> str:
+    return (
+        "[Unit]\n"
+        "Description=Restart a stuck OneDrive monitor\n"
+        "\n"
+        "[Service]\n"
+        "Type=oneshot\n"
+        "ExecStart=/usr/local/bin/nextlink-onedrive-unstick\n"
+    )
+
+
+def onedrive_unstick_timer() -> str:
+    return (
+        "[Unit]\n"
+        "Description=Check OneDrive for a stuck DNS handle\n"
+        "\n"
+        "[Timer]\n"
+        "OnStartupSec=3min\n"
+        "OnUnitActiveSec=5min\n"
+        "AccuracySec=30s\n"
+        "\n"
+        "[Install]\n"
+        "WantedBy=timers.target\n"
+    )
+
+
+def onedrive_service_dropin() -> str:
+    return (
+        "[Service]\n"
+        "ExecStart=\n"
+        "ExecStart=/usr/local/bin/nextlink-onedrive-monitor\n"
+    )
 
 
 def update_policy(codename: str) -> str:

@@ -16,7 +16,11 @@ from ubuntu_desktop import (
     login_banner,
     onedrive_config,
     onedrive_connect_script,
+    onedrive_ensure_config_snippet,
     onedrive_desktop_file,
+    onedrive_monitor_script,
+    onedrive_service_dropin,
+    onedrive_unstick_script,
     session_defaults,
     skip_new_laptop_questions,
     update_policy,
@@ -117,10 +121,49 @@ def main() -> None:
     assert 'application_id = "ab87c385-2754-4f2e-980b-2384d0fdc9d1"' in config
     assert 'azure_tenant_id = "143673a5-ff46-4d23-8255-b4ef07861814"' in config
     assert 'sync_dir = "~/OneDrive"' in config
+    # Dual-stack DNS plus HTTP/2 leaves the monitor retrying one Graph call.
+    assert 'ip_protocol_version = "1"' in config
+    assert 'force_http_11 = "true"' in config
     assert "secret" not in config.lower()
     # The onedrive client rejects unquoted values ("Malformed config line").
     import re
-    assert all(re.fullmatch(r'[a-z_]+ = ".*"', line) for line in config.splitlines()), config
+    assert all(re.fullmatch(r'[a-z0-9_]+ = ".*"', line) for line in config.splitlines()), config
+    assert "onedrive_ensure_config" in script
+    assert "nextlink-onedrive-unstick" in script
+    assert "--resync" not in script
+    monitor = onedrive_monitor_script()
+    assert "exec /usr/bin/onedrive --monitor" in monitor
+    assert 'ip_protocol_version' in monitor and 'force_http_11' in monitor
+    unstick = onedrive_unstick_script()
+    assert "Could not resolve hostname" in unstick
+    assert "systemctl --user restart onedrive.service" in unstick
+    assert "--resync" not in unstick
+    dropin = onedrive_service_dropin()
+    assert "ExecStart=/usr/local/bin/nextlink-onedrive-monitor" in dropin
+    assert "ExecStart=\n" in dropin
+    shell = Path(__file__).with_name("ubuntu-desktop.sh").read_text()
+    assert "nextlink-onedrive-monitor" in shell
+    assert "nextlink-onedrive-unstick.timer" in shell
+    assert "systemctl --global enable nextlink-onedrive-unstick.timer" in shell
+    import subprocess
+    import tempfile
+    for body in (script, monitor, unstick):
+        with tempfile.NamedTemporaryFile("w", suffix=".sh") as fh:
+            fh.write(body)
+            fh.flush()
+            subprocess.run(["bash", "-n", fh.name], check=True)
+    # An already-imaged laptop keeps the old config. The patch replaces IPv4+IPv6 and adds HTTP/1.1.
+    with tempfile.TemporaryDirectory() as tmp:
+        cfg = Path(tmp) / "config"
+        cfg.write_text('application_id = "ab87c385-2754-4f2e-980b-2384d0fdc9d1"\nip_protocol_version = "0"\n')
+        subprocess.run(
+            ["bash", "-c", onedrive_ensure_config_snippet() + f'onedrive_ensure_config "{cfg}"'],
+            check=True,
+        )
+        patched = cfg.read_text().splitlines()
+        assert 'ip_protocol_version = "1"' in patched
+        assert 'force_http_11 = "true"' in patched
+        assert sum(line.startswith("ip_protocol_version") for line in patched) == 1
     # Legal notice always (review H2); the welcome line is added when the laptop has a person.
     legal = login_banner("   ")
     assert legal.startswith("Authorized use only.") and "Welcome" not in legal

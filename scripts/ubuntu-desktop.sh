@@ -32,6 +32,8 @@ from ubuntu_desktop import (
     OUTLOOK_ICON, OUTLOOK_URL, TEAMS_ICON, TEAMS_URL,
     chrome_initial_preferences, chrome_managed_policy, desktop_file,
     firefox_policy, onedrive_config, onedrive_connect_script, onedrive_desktop_file,
+    onedrive_monitor_script, onedrive_service_dropin, onedrive_unstick_script,
+    onedrive_unstick_service, onedrive_unstick_timer,
     session_defaults, skip_new_laptop_questions, update_policy,
 )
 
@@ -42,11 +44,26 @@ apps.mkdir(parents=True, exist_ok=True)
 (apps / "outlook-pwa.desktop").write_text(desktop_file("Outlook", OUTLOOK_URL, "outlook-pwa", OUTLOOK_ICON))
 # OneDrive icon: first click signs in with a code and runs `onedrive --sync` (a bare
 # `onedrive` on 2.5.10 saves the token and does not download). Later logins use the service.
-connect = root / "usr/local/bin/nextlink-onedrive"
-connect.parent.mkdir(parents=True, exist_ok=True)
+bindir = root / "usr/local/bin"
+bindir.mkdir(parents=True, exist_ok=True)
+connect = bindir / "nextlink-onedrive"
 connect.write_text(onedrive_connect_script())
 connect.chmod(0o755)
+monitor = bindir / "nextlink-onedrive-monitor"
+monitor.write_text(onedrive_monitor_script())
+monitor.chmod(0o755)
+unstick = bindir / "nextlink-onedrive-unstick"
+unstick.write_text(onedrive_unstick_script())
+unstick.chmod(0o755)
 (apps / "nextlink-onedrive.desktop").write_text(onedrive_desktop_file())
+# The packaged unit stays active while libcurl retries a dead DNS handle.
+# The drop-in applies the workaround; the timer restarts that stuck process.
+user_unit = root / "etc/systemd/user"
+dropin = user_unit / "onedrive.service.d"
+dropin.mkdir(parents=True, exist_ok=True)
+(dropin / "nextlink.conf").write_text(onedrive_service_dropin())
+(user_unit / "nextlink-onedrive-unstick.service").write_text(onedrive_unstick_service())
+(user_unit / "nextlink-onedrive-unstick.timer").write_text(onedrive_unstick_timer())
 
 db = root / "etc/dconf/db/local.d"
 db.mkdir(parents=True, exist_ok=True)
@@ -92,6 +109,7 @@ conf.mkdir(parents=True, exist_ok=True)
 PY
 
 dconf update || log "dconf update failed"
+systemctl --global enable nextlink-onedrive-unstick.timer || log "OneDrive unstick timer not enabled"
 systemctl enable --now fwupd-refresh.timer 2>/dev/null || log "fwupd timer not enabled"
 
 cat > /etc/systemd/system/nextlink-driver-update.service << 'EOF'
