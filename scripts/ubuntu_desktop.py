@@ -2,8 +2,8 @@
 """Work desktop for the Ubuntu image: bottom dock, Teams, Outlook, OneDrive.
 
 The files are written for the system, so every account gets the same dock.
-Teams and Outlook are Chrome app windows. OneDrive uses the distro client
-and finishes sign-in when the employee opens it.
+Teams and Outlook are Chrome app windows. OneDrive is the Microsoft 365
+account in Settings > Online Accounts, shown as a drive in Files.
 """
 from __future__ import annotations
 
@@ -16,9 +16,10 @@ FILES = "org.gnome.Nautilus.desktop"
 TEAMS_ICON = "/usr/share/icons/hicolor/256x256/apps/teams-pwa.png"
 OUTLOOK_ICON = "/usr/share/icons/hicolor/256x256/apps/outlook-pwa.png"
 CHROME_FLAGS = "--no-first-run --no-default-browser-check"
-# Ubuntu Onedrive app. Public client. No secret.
-ONEDRIVE_CLIENT_ID = "ab87c385-2754-4f2e-980b-2384d0fdc9d1"
-ONEDRIVE_TENANT_ID = "143673a5-ff46-4d23-8255-b4ef07861814"
+# GNOME's own Microsoft 365 app: what Settings > Online Accounts uses when Client ID is
+# left blank. Public client, no secret. It needs tenant-wide admin consent in Entra.
+GOA_CLIENT_ID = "b155a604-3c31-4079-93b0-6bb6aa9d5464"
+TENANT_ID = "143673a5-ff46-4d23-8255-b4ef07861814"
 
 
 ONEDRIVE = "nextlink-onedrive.desktop"
@@ -235,46 +236,6 @@ def login_banner(employee: str) -> str:
     return f"{LEGAL_NOTICE} Welcome {name}." if name else LEGAL_NOTICE
 
 
-def onedrive_config() -> str:
-    # ip_protocol_version and force_http_11: a parallel A and AAAA lookup, plus
-    # HTTP/2, makes --monitor retry one Graph call forever
-    # ("Could not resolve hostname on handle"). IPv4 and HTTP/1.1 is the
-    # client's documented workaround. These laptops reach Microsoft on IPv4.
-    return (
-        f'application_id = "{ONEDRIVE_CLIENT_ID}"\n'
-        f'azure_tenant_id = "{ONEDRIVE_TENANT_ID}"\n'
-        'sync_dir = "~/OneDrive"\n'
-        'monitor_interval = "300"\n'
-        'disable_notifications = "false"\n'
-        # Sign-in shows a short code for microsoft.com/devicelogin (work accounts only).
-        'use_device_auth = "true"\n'
-        'ip_protocol_version = "1"\n'
-        'force_http_11 = "true"\n'
-    )
-
-
-def onedrive_ensure_config_snippet() -> str:
-    """Shell function. Writes the network workaround into an existing user config.
-
-    New images get the keys from onedrive_config(). A laptop imaged earlier keeps
-    the old file, and the client only reads it at startup.
-    """
-    return r'''onedrive_ensure_config() {
-  local file="$1"
-  [ -f "$file" ] || return 0
-  _onedrive_set() {
-    if grep -q "^$1 " "$file"; then
-      sed -i "s|^$1 = .*|$1 = $2|" "$file"
-    else
-      printf '%s = %s\n' "$1" "$2" >> "$file"
-    fi
-  }
-  _onedrive_set ip_protocol_version '"1"'
-  _onedrive_set force_http_11 '"true"'
-}
-'''
-
-
 def onedrive_desktop_file() -> str:
     return (
         "[Desktop Entry]\n"
@@ -288,162 +249,77 @@ def onedrive_desktop_file() -> str:
     )
 
 
+def onedrive_account_autostart() -> str:
+    """Runs at every login, so the account is in Settings before the person looks for it."""
+    return (
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        "Name=Add the Microsoft 365 account\n"
+        "Exec=/usr/local/bin/nextlink-onedrive --seed\n"
+        "NoDisplay=true\n"
+    )
+
+
 def onedrive_connect_script() -> str:
-    """The OneDrive icon. First time: sign in with a code, then download ~/OneDrive.
+    """The OneDrive icon, and with --seed the login step.
 
-    Ubuntu 26.04 ships onedrive 2.5.10. A bare `onedrive` prints the device code, saves
-    refresh_token, and exits without copying files. `--sync` and `--monitor` are the
-    only modes that download. The packaged user service runs `--monitor` afterwards.
+    Settings > Online Accounts asks for a Tenant ID that no employee knows. This writes
+    the account with the tenant already filled in, so Settings shows it with a Sign in
+    button. Once signed in, OneDrive is an online drive in Files (gvfs). Nothing is
+    copied to the disk.
+
+    Ubuntu's gnome-online-accounts has no system template file, so the entry goes in
+    the person's own accounts.conf. The daemon watches that file.
     """
+    login = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0"
+    redirect = f"goa-oauth2://localhost/{GOA_CLIENT_ID}"
     return (
-        "#!/bin/bash\n"
-        "# OneDrive for this user. Sign in once; --sync downloads ~/OneDrive. Later logins use onedrive.service.\n"
-        "set -u\n"
-        + onedrive_ensure_config_snippet()
-        + r'''cfg="$HOME/.config/onedrive"
-url="https://microsoft.com/devicelogin"
-title="OneDrive"
-
-# Start a download. The user service (--monitor) keeps it current. If that unit does not
-# stay up, run --sync directly. Never start a second client while one is already running.
-# A monitor that is already up but stuck on a dead DNS handle is restarted in place.
-ensure_downloading() {
-    mkdir -p "$HOME/OneDrive" "$cfg"
-    [ -f "$cfg/config" ] || cp /etc/skel/.config/onedrive/config "$cfg/config"
-    onedrive_ensure_config "$cfg/config"
-    if pgrep -u "$(id -u)" -x onedrive >/dev/null 2>&1; then
-        [ -x /usr/local/bin/nextlink-onedrive-unstick ] && /usr/local/bin/nextlink-onedrive-unstick || true
-        return 0
-    fi
-    systemctl --user enable --now onedrive.service >/dev/null 2>&1 || true
-    state=$(systemctl --user is-active onedrive.service 2>/dev/null || true)
-    case "$state" in
-        active|activating) return 0 ;;
-    esac
-    nohup onedrive --sync >>"$cfg/sync.log" 2>&1 &
-    disown || true
-}
-
-if [ -s "$cfg/refresh_token" ]; then
-    ensure_downloading
-    exec xdg-open "$HOME/OneDrive"
-fi
-mkdir -p "$cfg" "$HOME/OneDrive"
-[ -f "$cfg/config" ] || cp /etc/skel/.config/onedrive/config "$cfg/config"
-grep -q '^use_device_auth' "$cfg/config" || echo 'use_device_auth = "true"' >> "$cfg/config"
-onedrive_ensure_config "$cfg/config"
-log=$(mktemp)
-# --sync is required. Without it, 2.5.10 authorises and exits with an empty ~/OneDrive.
-onedrive --sync > "$log" 2>&1 &
-pid=$!
-code=""
-for _ in $(seq 1 45); do
-    code=$(sed -n 's/.*Enter the following code when prompted: *\([A-Za-z0-9-]*\).*/\1/p' "$log" | head -n 1)
-    [ -n "$code" ] && break
-    kill -0 "$pid" 2>/dev/null || break
-    sleep 1
-done
-if [ -z "$code" ]; then
-    zenity --error --title="$title" --width=420 --text="OneDrive could not start the sign-in. Check the internet connection and try again.\n\n$(tail -n 4 "$log")"
-    rm -f "$log"; exit 1
-fi
-printf '%s' "$code" | wl-copy 2>/dev/null
-xdg-open "$url" >/dev/null 2>&1 &
-zenity --info --title="$title" --width=440 --text="Connect OneDrive to your work account.\n\nA browser window opened at $url\nEnter this code (it is already copied):\n\n<span size='xx-large'><b>$code</b></span>\n\nSign in with your work email and approve it on your phone.\nThis window can be closed. Files download to the OneDrive folder in Home." &
-note=$!
-opened=0
-while kill -0 "$pid" 2>/dev/null; do
-    if [ "$opened" = 0 ] && [ -s "$cfg/refresh_token" ]; then
-        opened=1
-        kill "$note" 2>/dev/null || true
-        notify-send -i folder-remote "OneDrive is downloading" "Your files are copying to the OneDrive folder in Home." 2>/dev/null || true
-        xdg-open "$HOME/OneDrive" >/dev/null 2>&1 || true
-    fi
-    sleep 2
-done
-wait "$pid" || true
-kill "$note" 2>/dev/null || true
-if [ -s "$cfg/refresh_token" ]; then
-    # --sync has released the database, so the login monitor can take over.
-    systemctl --user enable --now onedrive.service >/dev/null 2>&1 || true
-    if [ "$opened" = 0 ]; then
-        notify-send -i folder-remote "OneDrive is connected" "Your files sync to the OneDrive folder in Home." 2>/dev/null || true
-        xdg-open "$HOME/OneDrive" >/dev/null 2>&1 || true
-    fi
-else
-    zenity --error --title="$title" --width=420 --text="OneDrive was not connected. Click the OneDrive icon to try again.\n\n$(tail -n 4 "$log")"
-fi
-rm -f "$log"
-'''
-    )
-
-
-def onedrive_monitor_script() -> str:
-    """ExecStart for the user service. The packaged unit runs `onedrive --monitor` with the old config."""
-    return (
-        "#!/bin/bash\n"
-        "# Apply the IPv4 and HTTP/1.1 workaround, then run the monitor.\n"
-        "set -u\n"
-        + onedrive_ensure_config_snippet()
-        + 'onedrive_ensure_config "${HOME}/.config/onedrive/config"\n'
-        "exec /usr/bin/onedrive --monitor\n"
-    )
-
-
-def onedrive_unstick_script() -> str:
-    """Restart a monitor that is retrying a dead curl DNS handle.
-
-    The process stays active, so Restart=on-failure never runs. A fetch that is
-    still progressing does not print this error. Do not --resync: the local
-    database keeps items already saved.
-    """
-    return r'''#!/bin/bash
-# Restart OneDrive when this start is stuck on "Could not resolve hostname on handle".
+        r'''#!/bin/bash
+# OneDrive through Settings > Online Accounts. --seed only adds the account.
 set -u
-systemctl --user is-active --quiet onedrive.service || exit 0
-started=$(systemctl --user show -p ActiveEnterTimestamp --value onedrive.service 2>/dev/null || true)
-[ -n "$started" ] || exit 0
-start_epoch=$(date -d "$started" +%s 2>/dev/null || echo 0)
-now=$(date +%s)
-# Give a fresh start time to reach Microsoft before treating a lookup as stuck.
-[ $((now - start_epoch)) -ge 180 ] || exit 0
-log=$(journalctl --user -u onedrive.service --since "$started" --no-pager -o cat 2>/dev/null || true)
-printf '%s\n' "$log" | grep -q 'Could not resolve hostname' || exit 0
-exec systemctl --user restart onedrive.service
+email=$(id -un)
+conf="$HOME/.config/goa-1.0/accounts.conf"
+
+# Identity must equal the mailbox address Microsoft returns, or the sign-in is refused.
+# The Entra sign-in name is that address. Local accounts (nextadmin) have no '@'.
+case "$email" in
+    *@*) ;;
+    *) exit 0 ;;
+esac
+if ! grep -qs '^Provider=ms_graph$' "$conf"; then
+    mkdir -p "$(dirname "$conf")"
+    cat >> "$conf" << EOF
+[Account nextlink_m365]
+Provider=ms_graph
+Identity=$email
+PresentationIdentity=$email
+FilesEnabled=true
+MailEnabled=false
+CalendarEnabled=false
+ContactsEnabled=false
 '''
+        # gnome-online-accounts 3.58 reads these four values under both spellings.
+        f"OAuth2AuthorizationUri={login}/authorize\n"
+        f"OAuth2TokenUri={login}/token\n"
+        f"OAuth2ClientId={GOA_CLIENT_ID}\n"
+        f"OAuth2RedirectUri={redirect}\n"
+        f"authorization_uri={login}/authorize\n"
+        f"token_uri={login}/token\n"
+        f"client_id={GOA_CLIENT_ID}\n"
+        f"redirect_uri={redirect}\n"
+        r'''EOF
+    sleep 1  # the daemon rereads the file 200 ms after it changes
+fi
+[ "${1:-}" = "--seed" ] && exit 0
 
-
-def onedrive_unstick_service() -> str:
-    return (
-        "[Unit]\n"
-        "Description=Restart a stuck OneDrive monitor\n"
-        "\n"
-        "[Service]\n"
-        "Type=oneshot\n"
-        "ExecStart=/usr/local/bin/nextlink-onedrive-unstick\n"
-    )
-
-
-def onedrive_unstick_timer() -> str:
-    return (
-        "[Unit]\n"
-        "Description=Check OneDrive for a stuck DNS handle\n"
-        "\n"
-        "[Timer]\n"
-        "OnStartupSec=3min\n"
-        "OnUnitActiveSec=5min\n"
-        "AccuracySec=30s\n"
-        "\n"
-        "[Install]\n"
-        "WantedBy=timers.target\n"
-    )
-
-
-def onedrive_service_dropin() -> str:
-    return (
-        "[Service]\n"
-        "ExecStart=\n"
-        "ExecStart=/usr/local/bin/nextlink-onedrive-monitor\n"
+# Signed in: open the drive. Not yet: open the account in Settings, on its Sign in button.
+uri="onedrive://$email/"
+gio mount "$uri" >/dev/null 2>&1
+if gio info "$uri" >/dev/null 2>&1; then
+    exec nautilus --new-window "$uri"
+fi
+exec gnome-control-center online-accounts nextlink_m365
+'''
     )
 
 

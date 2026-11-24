@@ -14,13 +14,9 @@ from ubuntu_desktop import (
     firefox_policy,
     dock_defaults,
     login_banner,
-    onedrive_config,
+    onedrive_account_autostart,
     onedrive_connect_script,
-    onedrive_ensure_config_snippet,
     onedrive_desktop_file,
-    onedrive_monitor_script,
-    onedrive_service_dropin,
-    onedrive_unstick_script,
     session_defaults,
     skip_new_laptop_questions,
     update_policy,
@@ -67,7 +63,6 @@ def main() -> None:
     assert '"PopupBlocking"' in firefox
     assert "etc/firefox/policies" in Path(__file__).with_name("ubuntu-desktop.sh").read_text()
     shell = Path(__file__).with_name("ubuntu-desktop.sh").read_text()
-    assert "onedrive.service" in shell
     assert "symlink_to" not in shell
     assert "skip_new_laptop_questions" in shell
     assert "extras/icons" in shell
@@ -99,71 +94,58 @@ def main() -> None:
         skip_new_laptop_questions(root)
         gdm = (root / "etc/gdm3/custom.conf").read_text()
         assert gdm == "[daemon]\nAutomaticLoginEnable=false\nInitialSetupEnable=false\n\n[security]\n"
-    # OneDrive: sign in once with a device code, then it syncs at every login.
-    assert "use_device_auth = \"true\"" in onedrive_config()
+    # OneDrive: the Microsoft 365 account in Settings > Online Accounts, shown as a drive in Files.
     assert "nextlink-onedrive.desktop" in dock_defaults()
     launcher = onedrive_desktop_file()
     assert "Exec=/usr/local/bin/nextlink-onedrive" in launcher and "Name=OneDrive" in launcher
+    assert "Exec=/usr/local/bin/nextlink-onedrive --seed" in onedrive_account_autostart()
     script = onedrive_connect_script()
     assert script.startswith("#!/bin/bash")
-    assert "refresh_token" in script
-    assert "Enter the following code when prompted" in script  # the client's own device-code line
-    assert "microsoft.com/devicelogin" in script
-    assert "systemctl --user enable --now onedrive.service" in script
-    # 2.5.10 exits after a bare `onedrive` without copying files. --sync is what downloads.
-    assert "onedrive --sync" in script
-    assert "\nonedrive >" not in script
-    assert "is-active" in script
-    assert "zenity" in script
+    assert "gnome-control-center online-accounts nextlink_m365" in script
+    assert "secret" not in script.lower()
     shell = Path(__file__).with_name("ubuntu-desktop.sh").read_text()
-    assert "nextlink-onedrive" in shell and "zenity" in shell
-    config = onedrive_config()
-    assert 'application_id = "ab87c385-2754-4f2e-980b-2384d0fdc9d1"' in config
-    assert 'azure_tenant_id = "143673a5-ff46-4d23-8255-b4ef07861814"' in config
-    assert 'sync_dir = "~/OneDrive"' in config
-    # Dual-stack DNS plus HTTP/2 leaves the monitor retrying one Graph call.
-    assert 'ip_protocol_version = "1"' in config
-    assert 'force_http_11 = "true"' in config
-    assert "secret" not in config.lower()
-    # The onedrive client rejects unquoted values ("Malformed config line").
-    import re
-    assert all(re.fullmatch(r'[a-z0-9_]+ = ".*"', line) for line in config.splitlines()), config
-    assert "onedrive_ensure_config" in script
-    assert "nextlink-onedrive-unstick" in script
-    assert "--resync" not in script
-    monitor = onedrive_monitor_script()
-    assert "exec /usr/bin/onedrive --monitor" in monitor
-    assert 'ip_protocol_version' in monitor and 'force_http_11' in monitor
-    unstick = onedrive_unstick_script()
-    assert "Could not resolve hostname" in unstick
-    assert "systemctl --user restart onedrive.service" in unstick
-    assert "--resync" not in unstick
-    dropin = onedrive_service_dropin()
-    assert "ExecStart=/usr/local/bin/nextlink-onedrive-monitor" in dropin
-    assert "ExecStart=\n" in dropin
-    shell = Path(__file__).with_name("ubuntu-desktop.sh").read_text()
-    assert "nextlink-onedrive-monitor" in shell
-    assert "nextlink-onedrive-unstick.timer" in shell
-    assert "systemctl --global enable nextlink-onedrive-unstick.timer" in shell
+    assert "nextlink-onedrive" in shell and "gnome-online-accounts" in shell and "gvfs-backends" in shell
+    # The sync client is gone from new images.
+    assert "onedrive.service" not in shell and "unstick" not in shell
+    assert "install -y onedrive" not in shell and " onedrive " not in shell
     import subprocess
-    import tempfile
-    for body in (script, monitor, unstick):
-        with tempfile.NamedTemporaryFile("w", suffix=".sh") as fh:
-            fh.write(body)
-            fh.flush()
-            subprocess.run(["bash", "-n", fh.name], check=True)
-    # An already-imaged laptop keeps the old config. The patch replaces IPv4+IPv6 and adds HTTP/1.1.
     with tempfile.TemporaryDirectory() as tmp:
-        cfg = Path(tmp) / "config"
-        cfg.write_text('application_id = "ab87c385-2754-4f2e-980b-2384d0fdc9d1"\nip_protocol_version = "0"\n')
-        subprocess.run(
-            ["bash", "-c", onedrive_ensure_config_snippet() + f'onedrive_ensure_config "{cfg}"'],
-            check=True,
-        )
-        patched = cfg.read_text().splitlines()
-        assert 'ip_protocol_version = "1"' in patched
-        assert 'force_http_11 = "true"' in patched
-        assert sum(line.startswith("ip_protocol_version") for line in patched) == 1
+        home = Path(tmp)
+        stub = home / "bin"
+        stub.mkdir()
+        (home / "nextlink-onedrive").write_text(script)
+
+        def seed(login: str) -> str:
+            (stub / "id").write_text(f"#!/bin/sh\necho '{login}'\n")
+            (stub / "id").chmod(0o755)
+            env = {**os.environ, "HOME": str(home), "PATH": f"{stub}:{os.environ['PATH']}"}
+            subprocess.run(["bash", str(home / "nextlink-onedrive"), "--seed"], check=True, env=env)
+            conf = home / ".config/goa-1.0/accounts.conf"
+            return conf.read_text() if conf.is_file() else ""
+
+        # nextadmin and other local accounts have no mailbox: nothing is added.
+        assert seed("nextadmin") == ""
+        conf = seed("zmiller@team.nxlink.com")
+        import configparser
+        parsed = configparser.ConfigParser(interpolation=None)
+        parsed.optionxform = str
+        parsed.read_string(conf)
+        acct = parsed["Account nextlink_m365"]
+        assert acct["Provider"] == "ms_graph"
+        assert acct["Identity"] == acct["PresentationIdentity"] == "zmiller@team.nxlink.com"
+        assert acct["FilesEnabled"] == "true" and acct["MailEnabled"] == "false"
+        tenant = "143673a5-ff46-4d23-8255-b4ef07861814"
+        client = "b155a604-3c31-4079-93b0-6bb6aa9d5464"
+        assert acct["OAuth2AuthorizationUri"] == f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize"
+        assert acct["OAuth2TokenUri"] == f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
+        assert acct["OAuth2ClientId"] == client
+        assert acct["OAuth2RedirectUri"] == f"goa-oauth2://localhost/{client}"
+        # The Microsoft 365 provider reads its own copy of the same four values.
+        assert acct["authorization_uri"] == acct["OAuth2AuthorizationUri"]
+        assert acct["token_uri"] == acct["OAuth2TokenUri"]
+        assert acct["client_id"] == client and acct["redirect_uri"] == acct["OAuth2RedirectUri"]
+        # Every login runs --seed. A second run must not add a second account.
+        assert seed("zmiller@team.nxlink.com") == conf
     # Legal notice always (review H2); the welcome line is added when the laptop has a person.
     legal = login_banner("   ")
     assert legal.startswith("Authorized use only.") and "Welcome" not in legal
